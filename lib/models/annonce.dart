@@ -1,4 +1,5 @@
 // lib/models/annonce.dart
+import '../config/app_config.dart';
 
 /// Image d'une annonce
 class AdImage {
@@ -46,7 +47,7 @@ class AdUser {
   String? get avatarUrl {
     if (avatar == null || avatar!.isEmpty) return null;
     if (avatar!.startsWith('http')) return avatar;
-    return 'https://www.eburnie-market.com$avatar';
+    return '${AppConfig.mediaUrl}$avatar';
   }
 
   factory AdUser.fromJson(Map<String, dynamic> json) => AdUser(
@@ -122,17 +123,18 @@ class Ad {
   String? get mainImageUrl {
     if (primaryImage != null && primaryImage!.isNotEmpty) {
       if (primaryImage!.startsWith('http')) return primaryImage;
-      return 'https://www.eburnie-market.com$primaryImage';
+      return '${AppConfig.mediaUrl}$primaryImage';
     }
     if (images.isNotEmpty) {
       final url = images.first.imageUrl;
       if (url.startsWith('http')) return url;
-      return 'https://www.eburnie-market.com$url';
+      return '${AppConfig.mediaUrl}$url';
     }
     return null;
   }
 
   /// Prix formaté en FCFA
+  /// DRF renvoie un DecimalField en String → on parse proprement
   String get formattedPrice {
     final formatted = price
         .toStringAsFixed(0)
@@ -141,16 +143,54 @@ class Ad {
   }
 
   /// Numéro WhatsApp à contacter
-  String? get contactWhatsApp => whatsappNumber ?? user?.phoneNumber;
+  String? get contactWhatsApp {
+    final n = whatsappNumber ?? user?.phoneNumber;
+    if (n == null || n.isEmpty) return null;
+    return n;
+  }
 
   /// Numéro de téléphone à appeler
-  String? get contactPhone => user?.phoneNumber ?? whatsappNumber;
+  String? get contactPhone {
+    final n = user?.phoneNumber ?? whatsappNumber;
+    if (n == null || n.isEmpty) return null;
+    return n;
+  }
+
+  // ── Helpers privés ─────────────────────────────────────────────────────────
+
+  /// Parse le prix : DRF renvoie un String ("20000.00"), pas un num
+  static double _parsePrice(dynamic raw) {
+    if (raw == null) return 0.0;
+    if (raw is num) return raw.toDouble();
+    return double.tryParse(raw.toString()) ?? 0.0;
+  }
+
+  /// Construit un AdUser depuis :
+  ///   • un objet imbriqué  { "user": { "id": ..., "full_name": ... } }  (détail)
+  ///   • des champs plats   { "user_name": "...", "user_avatar": "..." } (home-data / liste)
+  static AdUser? _parseUser(Map<String, dynamic> json) {
+    // Objet imbriqué (endpoint détail)
+    if (json['user'] != null && json['user'] is Map) {
+      return AdUser.fromJson(Map<String, dynamic>.from(json['user']));
+    }
+    // Champs plats (home-data, liste)
+    final name = json['user_name'];
+    if (name != null && (name as String).isNotEmpty) {
+      return AdUser(
+        id: json['user_id'] ?? 0,
+        fullName: name,
+        avatar: json['user_avatar'],
+        phoneNumber: json['user_phone'],
+      );
+    }
+    return null;
+  }
 
   factory Ad.fromJson(Map<String, dynamic> json) => Ad(
     id: json['id']?.toString() ?? '',
     title: json['title'] ?? '',
     description: json['description'],
-    price: (json['price'] ?? 0).toDouble(),
+    price: _parsePrice(json['price']), // ← FIX : String → double
     isNegotiable: json['is_negotiable'] ?? false,
     category: json['category'] ?? '',
     categoryDisplay: json['category_display'] ?? '',
@@ -169,13 +209,13 @@ class Ad {
             ?.map((e) => AdImage.fromJson(e))
             .toList() ??
         [],
-    user: json['user'] != null ? AdUser.fromJson(json['user']) : null,
+    user: _parseUser(json), // ← FIX : champs plats + objet
     relatedAds:
         (json['related_ads'] as List<dynamic>?)
             ?.map((e) => Map<String, dynamic>.from(e))
             .toList() ??
         [],
-    publishedAt: json['published_at'],
+    publishedAt: json['published_at'] ?? json['created_at'],
     createdAt: json['created_at'],
     expiresAt: json['expires_at'],
     timeSincePublished: json['time_since_published'],
@@ -201,7 +241,6 @@ class AdsResponse {
   bool get hasMore => next != null;
 
   factory AdsResponse.fromJson(dynamic json) {
-    // Gérer la réponse paginée OU une liste directe
     if (json is List) {
       return AdsResponse(
         count: json.length,
@@ -236,26 +275,21 @@ class HomeData {
     this.categories = const [],
   });
 
-  factory HomeData.fromJson(Map<String, dynamic> json) => HomeData(
-    featuredAds:
-        (json['featured_ads'] as List<dynamic>?)
-            ?.map((e) => Ad.fromJson(e))
-            .toList() ??
-        [],
-    urgentAds:
-        (json['urgent_ads'] as List<dynamic>?)
-            ?.map((e) => Ad.fromJson(e))
-            .toList() ??
-        [],
-    recentAds:
-        (json['recent_ads'] as List<dynamic>?)
-            ?.map((e) => Ad.fromJson(e))
-            .toList() ??
-        [],
-    categories:
-        (json['categories'] as List<dynamic>?)
-            ?.map((e) => Map<String, dynamic>.from(e))
-            .toList() ??
-        [],
-  );
+  factory HomeData.fromJson(Map<String, dynamic> json) {
+    List<Ad> parseAdList(String key) =>
+        (json[key] as List<dynamic>?)?.map((e) => Ad.fromJson(e)).toList() ??
+        [];
+
+    return HomeData(
+      featuredAds: parseAdList('featured_ads'),
+      urgentAds: parseAdList('urgent_ads'),
+      recentAds: parseAdList('recent_ads'),
+      categories:
+          (json['categories'] as List<dynamic>?)
+              ?.whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList() ??
+          [],
+    );
+  }
 }

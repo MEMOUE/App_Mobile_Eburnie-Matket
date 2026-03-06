@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../config/app_theme.dart';
-import '../../models/ad.dart';
+import '../../models/annonce.dart';
 import '../../models/user.dart';
 import '../../services/auth_service.dart';
 import '../../services/annonce_service.dart';
@@ -961,7 +961,7 @@ class _BannerCard extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              _AdImage(url: ad.mainImageUrl),
+              _AdImage(url: ad.mainImageUrl ?? ''),
               Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -1110,7 +1110,7 @@ class _AdGridCard extends StatelessWidget {
                       top: Radius.circular(14),
                     ),
                     child: SizedBox.expand(
-                      child: _AdImage(url: ad.mainImageUrl),
+                      child: _AdImage(url: ad.mainImageUrl ?? ''),
                     ),
                   ),
                   if (ad.isFeatured)
@@ -1273,7 +1273,7 @@ class _UrgentCard extends StatelessWidget {
                       top: Radius.circular(14),
                     ),
                     child: SizedBox.expand(
-                      child: _AdImage(url: ad.mainImageUrl),
+                      child: _AdImage(url: ad.mainImageUrl ?? ''),
                     ),
                   ),
                   Positioned(

@@ -10,6 +10,9 @@ import '../screens/auth/reset_password_screen.dart';
 import '../screens/auth/profile_edit_screen.dart';
 import '../screens/dashboard/dashboard_screen.dart';
 import '../services/auth_service.dart';
+import '../screens/annonces/create_annonce_screen.dart';
+import '../screens/annonces/list_annonce_screen.dart';
+import '../screens/annonces/detail_annonce_screen.dart';
 
 class AppRouter {
   // Routes publiques (accessibles sans connexion)

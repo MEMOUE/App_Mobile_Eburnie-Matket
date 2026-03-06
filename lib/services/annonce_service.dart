@@ -36,8 +36,10 @@ class AnnonceService {
       }
       throw _parseError(response);
     } catch (e) {
+      // Attrape aussi les Error Dart (TypeError, NoSuchMethodError…)
+      // qui ne sont PAS des Exception et seraient sinon avalés silencieusement
       if (e is Exception) rethrow;
-      throw Exception('Impossible de charger la page d\'accueil');
+      throw Exception('Erreur de parsing home-data: $e');
     }
   }
 
@@ -53,62 +55,78 @@ class AnnonceService {
     String ordering = '-created_at',
     int page = 1,
   }) async {
-    final params = <String, String>{};
-    if (category != null && category.isNotEmpty) params['category'] = category;
-    if (city != null && city.isNotEmpty) params['city'] = city;
-    if (search != null && search.isNotEmpty) params['search'] = search;
-    if (priceMin != null) params['price_min'] = priceMin.toString();
-    if (priceMax != null) params['price_max'] = priceMax.toString();
-    params['ordering'] = ordering;
-    params['page'] = page.toString();
+    try {
+      final params = <String, String>{};
+      if (category != null && category.isNotEmpty)
+        params['category'] = category;
+      if (city != null && city.isNotEmpty) params['city'] = city;
+      if (search != null && search.isNotEmpty) params['search'] = search;
+      if (priceMin != null) params['price_min'] = priceMin.toString();
+      if (priceMax != null) params['price_max'] = priceMax.toString();
+      params['ordering'] = ordering;
+      params['page'] = page.toString();
 
-    final uri = Uri.parse('${_baseUrl}ads/').replace(queryParameters: params);
+      final uri = Uri.parse('${_baseUrl}ads/').replace(queryParameters: params);
 
-    final response = await http
-        .get(uri, headers: _headers)
-        .timeout(AppConfig.connectTimeout);
+      final response = await http
+          .get(uri, headers: _headers)
+          .timeout(AppConfig.connectTimeout);
 
-    if (response.statusCode == 200) {
-      final data = json.decode(utf8.decode(response.bodyBytes));
-      return AdsResponse.fromJson(data);
+      if (response.statusCode == 200) {
+        final data = json.decode(utf8.decode(response.bodyBytes));
+        return AdsResponse.fromJson(data);
+      }
+      throw _parseError(response);
+    } catch (e) {
+      if (e is Exception) rethrow;
+      throw Exception('Erreur de parsing ads: $e');
     }
-    throw _parseError(response);
   }
 
   // ─── Détail d'une annonce ──────────────────────────────────────────────────
 
   /// Récupère les détails complets d'une annonce
   Future<Ad> getAdDetail(String adId) async {
-    final response = await http
-        .get(Uri.parse('${_baseUrl}ads/$adId/'), headers: _headers)
-        .timeout(AppConfig.connectTimeout);
+    try {
+      final response = await http
+          .get(Uri.parse('${_baseUrl}ads/$adId/'), headers: _headers)
+          .timeout(AppConfig.connectTimeout);
 
-    if (response.statusCode == 200) {
-      final data = json.decode(utf8.decode(response.bodyBytes));
-      return Ad.fromJson(data);
+      if (response.statusCode == 200) {
+        final data = json.decode(utf8.decode(response.bodyBytes));
+        return Ad.fromJson(data);
+      }
+      throw _parseError(response);
+    } catch (e) {
+      if (e is Exception) rethrow;
+      throw Exception('Erreur de parsing ad detail: $e');
     }
-    throw _parseError(response);
   }
 
   // ─── Mes annonces ──────────────────────────────────────────────────────────
 
   /// Récupère les annonces de l'utilisateur connecté
   Future<List<Ad>> getMyAds() async {
-    final response = await http
-        .get(Uri.parse('${_baseUrl}my-ads/'), headers: _headers)
-        .timeout(AppConfig.connectTimeout);
+    try {
+      final response = await http
+          .get(Uri.parse('${_baseUrl}my-ads/'), headers: _headers)
+          .timeout(AppConfig.connectTimeout);
 
-    if (response.statusCode == 200) {
-      final data = json.decode(utf8.decode(response.bodyBytes));
-      if (data is List) {
-        return data.map((e) => Ad.fromJson(e)).toList();
+      if (response.statusCode == 200) {
+        final data = json.decode(utf8.decode(response.bodyBytes));
+        if (data is List) {
+          return data.map((e) => Ad.fromJson(e)).toList();
+        }
+        if (data is Map && data['results'] != null) {
+          return (data['results'] as List).map((e) => Ad.fromJson(e)).toList();
+        }
+        return [];
       }
-      if (data is Map && data['results'] != null) {
-        return (data['results'] as List).map((e) => Ad.fromJson(e)).toList();
-      }
-      return [];
+      throw _parseError(response);
+    } catch (e) {
+      if (e is Exception) rethrow;
+      throw Exception('Erreur de parsing my-ads: $e');
     }
-    throw _parseError(response);
   }
 
   // ─── Suppression ───────────────────────────────────────────────────────────
