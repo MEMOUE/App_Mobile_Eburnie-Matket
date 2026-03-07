@@ -14,6 +14,7 @@ import '../screens/annonces/create_annonce_screen.dart';
 import '../screens/annonces/list_annonce_screen.dart';
 import '../screens/annonces/detail_annonce_screen.dart';
 import '../screens/annonces/my_ds_screen.dart';
+import '../screens/premium/premium_screen.dart';
 
 class AppRouter {
   // Routes publiques (accessibles sans connexion)
@@ -122,6 +123,7 @@ class AppRouter {
             onGoToMyAds: () => context.go('/my-ads'),
             onGoToNewAd: () => context.go('/create-ad'),
             onGoToHome: () => context.go('/accueil'),
+            onGoToPremium: () => context.go('/premium'),
             onLogout: () async {
               await AuthService().logout();
               if (context.mounted) context.go('/accueil');
@@ -149,6 +151,15 @@ class AppRouter {
         ],
       ),
 
+      // ── Premium (protégé) ──────────────────────────────────────────────────
+      GoRoute(
+        path: '/premium',
+        pageBuilder: (context, state) => _slideTransition(
+          state,
+          PremiumScreen(onBack: () => context.go('/dashboard')),
+        ),
+      ),
+
       // ── Mes annonces (protégé) ─────────────────────────────────────────────
       GoRoute(
         path: '/my-ads',
@@ -173,7 +184,6 @@ class AppRouter {
       ),
 
       // ── Liste annonces (public) ────────────────────────────────────────────
-      // ListAnnonceScreen(initialCategory, initialCity, initialSearch, onGoToLogin)
       GoRoute(
         path: '/annonces',
         pageBuilder: (context, state) {
@@ -193,7 +203,6 @@ class AppRouter {
       ),
 
       // ── Détail annonce (public) ────────────────────────────────────────────
-      // DetailAnnonceScreen(adId, onGoToLogin)
       GoRoute(
         path: '/annonces/:id',
         pageBuilder: (context, state) {

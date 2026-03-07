@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../config/app_theme.dart';
 import '../../models/user.dart';
+import '../../models/premium.dart';
 import '../../services/auth_service.dart';
+import '../../services/premium_service.dart';
 
 // ─── Modèles de données ──────────────────────────────────────────────────────
 
@@ -37,6 +39,7 @@ class DashboardScreen extends StatefulWidget {
   final VoidCallback? onGoToMyAds;
   final VoidCallback? onGoToNewAd;
   final VoidCallback? onGoToHome;
+  final VoidCallback? onGoToPremium; // ← NOUVEAU
   final VoidCallback? onLogout;
 
   const DashboardScreen({
@@ -45,6 +48,7 @@ class DashboardScreen extends StatefulWidget {
     this.onGoToMyAds,
     this.onGoToNewAd,
     this.onGoToHome,
+    this.onGoToPremium,
     this.onLogout,
   });
 
@@ -58,6 +62,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool _loadingStats = true;
   bool _avatarError = false;
   DashboardStats _stats = const DashboardStats();
+  PremiumStatus? _premiumStatus; // ← NOUVEAU
 
   late AnimationController _heroController;
   late AnimationController _cardsController;
@@ -69,7 +74,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   void initState() {
     super.initState();
 
-    // Animation Hero (header)
     _heroController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
@@ -83,7 +87,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _heroController, curve: Curves.easeOut));
 
-    // Animation des cartes (staggered)
     _cardsController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -119,18 +122,36 @@ class _DashboardScreenState extends State<DashboardScreen>
       }
     } catch (_) {}
 
-    // Simuler le chargement des stats API
-    await Future.delayed(const Duration(milliseconds: 300));
+    // Charger le statut premium en parallèle
+    PremiumStatus? premiumStatus;
+    try {
+      premiumStatus = await PremiumService().checkStatus();
+    } catch (_) {
+      // Fallback si l'API premium n'est pas disponible
+      premiumStatus = PremiumStatus(
+        isPremium: _user?.isPremiumActive ?? false,
+        canCreateAd: true,
+        remainingAds: 3,
+        maxFreeAds: 5,
+      );
+    }
+
+    await Future.delayed(const Duration(milliseconds: 200));
 
     if (mounted) {
+      final remaining = premiumStatus?.remainingAds ?? 3;
+      final maxFree = premiumStatus?.maxFreeAds ?? 5;
+      final used = maxFree - remaining;
+
       setState(() {
+        _premiumStatus = premiumStatus;
         _stats = DashboardStats(
           totalAds: 3,
-          activeAds: 2,
+          activeAds: used.clamp(0, maxFree),
           pendingAds: 1,
           totalViews: 148,
-          remainingAds: 3,
-          maxFreeAds: 5,
+          remainingAds: remaining,
+          maxFreeAds: maxFree,
         );
         _loadingStats = false;
       });
@@ -185,37 +206,24 @@ class _DashboardScreenState extends State<DashboardScreen>
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              // ── AppBar / Hero ──────────────────────────────────────
               _buildAppBar(),
-
-              // ── Body ──────────────────────────────────────────────
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
                     const SizedBox(height: 24),
-
-                    // Stats
                     _buildStatsSection(),
                     const SizedBox(height: 28),
-
-                    // Actions rapides
                     _buildSectionTitle('Actions rapides'),
                     const SizedBox(height: 14),
                     _buildQuickActions(),
                     const SizedBox(height: 28),
-
-                    // Premium CTA ou barre libre
-                    _buildPremiumSection(),
+                    _buildPremiumSection(), // ← section mise à jour
                     const SizedBox(height: 28),
-
-                    // Activité récente
                     _buildSectionTitle('Activité récente'),
                     const SizedBox(height: 14),
                     _buildRecentActivity(),
                     const SizedBox(height: 28),
-
-                    // Bouton déconnexion
                     _buildLogoutButton(),
                     const SizedBox(height: 16),
                   ]),
@@ -228,7 +236,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  // ── AppBar avec fond orange et infos utilisateur ──────────────────────────
+  // ── AppBar ────────────────────────────────────────────────────────────────
 
   Widget _buildAppBar() {
     return SliverAppBar(
@@ -248,7 +256,6 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
           child: Stack(
             children: [
-              // Cercles décoratifs en arrière-plan
               Positioned(
                 right: -40,
                 top: -40,
@@ -273,8 +280,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ),
                 ),
               ),
-
-              // Contenu
               SafeArea(
                 child: FadeTransition(
                   opacity: _heroFade,
@@ -285,7 +290,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Top row
                           Row(
                             children: [
                               const Spacer(),
@@ -309,8 +313,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                               ),
                             ],
                           ),
-
-                          // Avatar + infos
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
@@ -366,8 +368,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                                   ],
                                 ),
                               ),
-
-                              // Bouton éditer profil
                               GestureDetector(
                                 onTap: widget.onGoToProfile,
                                 child: Container(
@@ -413,6 +413,8 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Widget _buildAvatar() {
     final avatarUrl = _user?.avatarUrl;
+    final isPremium =
+        _premiumStatus?.isPremium ?? _user?.isPremiumActive ?? false;
     return Stack(
       children: [
         Container(
@@ -442,8 +444,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 : _avatarPlaceholder(),
           ),
         ),
-        // Badge premium
-        if (_user?.isPremiumActive == true)
+        if (isPremium)
           Positioned(
             bottom: 0,
             right: 0,
@@ -466,28 +467,24 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Widget _avatarPlaceholder() {
-    return Container(
-      color: AppTheme.primaryOrangeDark,
-      child: Center(
-        child: Text(
-          _getUserInitials(),
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.w800,
-          ),
+  Widget _avatarPlaceholder() => Container(
+    color: AppTheme.primaryOrangeDark,
+    child: Center(
+      child: Text(
+        _getUserInitials(),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 24,
+          fontWeight: FontWeight.w800,
         ),
       ),
-    );
-  }
+    ),
+  );
 
-  // ── Section Stats ─────────────────────────────────────────────────────────
+  // ── Stats ─────────────────────────────────────────────────────────────────
 
   Widget _buildStatsSection() {
-    if (_loadingStats) {
-      return _buildStatsLoading();
-    }
+    if (_loadingStats) return _buildStatsLoading();
     return Column(
       children: [
         Row(
@@ -545,42 +542,36 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Widget _buildStatsLoading() {
-    return Row(
-      children: [
-        Expanded(child: _SkeletonCard(height: 90)),
-        const SizedBox(width: 12),
-        Expanded(child: _SkeletonCard(height: 90)),
-      ],
-    );
-  }
+  Widget _buildStatsLoading() => Row(
+    children: [
+      Expanded(child: _SkeletonCard(height: 90)),
+      const SizedBox(width: 12),
+      Expanded(child: _SkeletonCard(height: 90)),
+    ],
+  );
 
-  // ── Section Titre ─────────────────────────────────────────────────────────
-
-  Widget _buildSectionTitle(String title) {
-    return Row(
-      children: [
-        Container(
-          width: 4,
-          height: 18,
-          decoration: BoxDecoration(
-            color: AppTheme.primaryOrange,
-            borderRadius: BorderRadius.circular(2),
-          ),
+  Widget _buildSectionTitle(String title) => Row(
+    children: [
+      Container(
+        width: 4,
+        height: 18,
+        decoration: BoxDecoration(
+          color: AppTheme.primaryOrange,
+          borderRadius: BorderRadius.circular(2),
         ),
-        const SizedBox(width: 10),
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w800,
-            color: AppTheme.gray900,
-            letterSpacing: -0.2,
-          ),
+      ),
+      const SizedBox(width: 10),
+      Text(
+        title,
+        style: const TextStyle(
+          fontSize: 17,
+          fontWeight: FontWeight.w800,
+          color: AppTheme.gray900,
+          letterSpacing: -0.2,
         ),
-      ],
-    );
-  }
+      ),
+    ],
+  );
 
   // ── Actions rapides ───────────────────────────────────────────────────────
 
@@ -642,14 +633,15 @@ class _DashboardScreenState extends State<DashboardScreen>
               const SizedBox(width: 12),
               Expanded(
                 child: _QuickActionTile(
-                  icon: Icons.bar_chart_rounded,
-                  label: 'Vue\nd\'ensemble',
+                  icon: Icons.star_rounded,
+                  label: 'Premium\n⭐',
                   gradient: const LinearGradient(
-                    colors: [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
+                    colors: [Color(0xFFFFD700), Color(0xFFF97316)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  onTap: () {},
+                  badge: (_premiumStatus?.isPremium ?? false) ? 'Actif' : null,
+                  onTap: widget.onGoToPremium,
                 ),
               ),
             ],
@@ -659,16 +651,20 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  // ── Section Premium ───────────────────────────────────────────────────────
+  // ── Section Premium (MISE À JOUR) ─────────────────────────────────────────
 
   Widget _buildPremiumSection() {
-    if (_user?.isPremiumActive == true) {
+    final isPremium =
+        _premiumStatus?.isPremium ?? _user?.isPremiumActive ?? false;
+
+    if (isPremium) {
       return _buildPremiumActiveBadge();
     }
     return _buildFreeAccountCard();
   }
 
   Widget _buildPremiumActiveBadge() {
+    final sub = _premiumStatus?.activeSubscription;
     return FadeTransition(
       opacity: _cardAnims.length > 5
           ? _cardAnims[5]
@@ -690,51 +686,88 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
           ],
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.25),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.star_rounded,
-                color: Colors.white,
-                size: 26,
-              ),
-            ),
-            const SizedBox(width: 16),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Compte Premium Actif ✨',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                    ),
+            Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.25),
+                    shape: BoxShape.circle,
                   ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Annonces illimitées · Priorité affichage',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w400,
-                    ),
+                  child: const Icon(
+                    Icons.star_rounded,
+                    color: Colors.white,
+                    size: 26,
                   ),
-                ],
+                ),
+                const SizedBox(width: 16),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Compte Premium Actif ✨',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Annonces illimitées · Priorité affichage',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.check_circle_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ],
+            ),
+            if (sub != null && sub.daysRemaining > 0) ...[
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.calendar_today_rounded,
+                      color: Colors.white,
+                      size: 14,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${sub.daysRemaining} jours restants',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const Icon(
-              Icons.check_circle_rounded,
-              color: Colors.white,
-              size: 28,
-            ),
+            ],
           ],
         ),
       ),
@@ -795,7 +828,6 @@ class _DashboardScreenState extends State<DashboardScreen>
               ],
             ),
             const SizedBox(height: 14),
-
             // Barre de progression
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
@@ -823,15 +855,36 @@ class _DashboardScreenState extends State<DashboardScreen>
                 fontWeight: FontWeight.w500,
               ),
             ),
-
             const SizedBox(height: 16),
-
-            // Bouton Premium
+            // Avantages premium rapides
+            Row(
+              children: [
+                _PremiumFeatureChip(
+                  icon: Icons.all_inclusive_rounded,
+                  label: 'Illimité',
+                  color: AppTheme.successGreen,
+                ),
+                const SizedBox(width: 8),
+                _PremiumFeatureChip(
+                  icon: Icons.trending_up_rounded,
+                  label: 'Prioritaire',
+                  color: AppTheme.infoBlue,
+                ),
+                const SizedBox(width: 8),
+                _PremiumFeatureChip(
+                  icon: Icons.verified_rounded,
+                  label: 'Vérifié',
+                  color: const Color(0xFF8B5CF6),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Bouton Premium → navigate to PremiumScreen
             GestureDetector(
-              onTap: () {},
+              onTap: widget.onGoToPremium,
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  vertical: 13,
+                  vertical: 14,
                   horizontal: 20,
                 ),
                 decoration: BoxDecoration(
@@ -896,12 +949,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         children: List.generate(3, (_) => _SkeletonCard(height: 72, mb: 10)),
       );
     }
+    if (_stats.totalAds == 0) return _buildEmptyActivity();
 
-    if (_stats.totalAds == 0) {
-      return _buildEmptyActivity();
-    }
-
-    // Données fictives pour la démo (à remplacer par un vrai appel API)
     final mockAds = [
       _MockAd(
         title: 'iPhone 13 Pro 256GB',
@@ -1005,46 +1054,80 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  // ── Bouton Déconnexion ────────────────────────────────────────────────────
-
-  Widget _buildLogoutButton() {
-    return GestureDetector(
-      onTap: _confirmLogout,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFFFE4E4), width: 1.5),
-          boxShadow: [
-            BoxShadow(
-              color: AppTheme.errorRed.withOpacity(0.06),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Icon(Icons.logout_rounded, color: AppTheme.errorRed, size: 20),
-            SizedBox(width: 10),
-            Text(
-              'Se déconnecter',
-              style: TextStyle(
-                color: AppTheme.errorRed,
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
+  Widget _buildLogoutButton() => GestureDetector(
+    onTap: _confirmLogout,
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFFFE4E4), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.errorRed.withOpacity(0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
-    );
-  }
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: const [
+          Icon(Icons.logout_rounded, color: AppTheme.errorRed, size: 20),
+          SizedBox(width: 10),
+          Text(
+            'Se déconnecter',
+            style: TextStyle(
+              color: AppTheme.errorRed,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
-// ─── Carte statistique animée ─────────────────────────────────────────────────
+// ─── Chip avantage premium ────────────────────────────────────────────────────
+
+class _PremiumFeatureChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  const _PremiumFeatureChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+    decoration: BoxDecoration(
+      color: color.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: color.withOpacity(0.25)),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: color, size: 12),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+// ─── Carte stat animée ────────────────────────────────────────────────────────
 
 class _AnimatedStatCard extends StatelessWidget {
   final Animation<double> animation;
@@ -1150,76 +1233,74 @@ class _QuickActionTile extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          gradient: gradient,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.12),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(icon, color: Colors.white, size: 22),
-                ),
-                if (badge != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.25),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      badge!,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                fontSize: 14,
-                height: 1.3,
-              ),
-            ),
-          ],
-        ),
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: gradient,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.12),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-    );
-  }
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: Colors.white, size: 22),
+              ),
+              if (badge != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.25),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    badge!,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+              height: 1.3,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
-// ─── Carte activité annonce ───────────────────────────────────────────────────
+// ─── Carte activité ───────────────────────────────────────────────────────────
 
 class _AdActivityCard extends StatelessWidget {
   final _MockAd ad;
@@ -1248,7 +1329,6 @@ class _AdActivityCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Icône annonce
             Container(
               width: 48,
               height: 48,
@@ -1267,8 +1347,6 @@ class _AdActivityCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 14),
-
-            // Infos
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1295,16 +1373,7 @@ class _AdActivityCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Container(
-                        width: 3,
-                        height: 3,
-                        decoration: const BoxDecoration(
-                          color: AppTheme.gray400,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Icon(
+                      const Icon(
                         Icons.location_on_outlined,
                         size: 12,
                         color: AppTheme.gray400,
@@ -1322,8 +1391,6 @@ class _AdActivityCard extends StatelessWidget {
                 ],
               ),
             ),
-
-            // Stats vues + statut
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -1508,7 +1575,7 @@ class _LogoutSheet extends StatelessWidget {
   }
 }
 
-// ─── Skeleton loader ──────────────────────────────────────────────────────────
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 class _SkeletonCard extends StatefulWidget {
   final double height;
@@ -1544,22 +1611,20 @@ class _SkeletonCardState extends State<_SkeletonCard>
   }
 
   @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _anim,
-      builder: (_, __) => Container(
-        height: widget.height,
-        margin: EdgeInsets.only(bottom: widget.mb),
-        decoration: BoxDecoration(
-          color: Color.lerp(AppTheme.gray100, AppTheme.gray200, _anim.value),
-          borderRadius: BorderRadius.circular(16),
-        ),
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _anim,
+    builder: (_, __) => Container(
+      height: widget.height,
+      margin: EdgeInsets.only(bottom: widget.mb),
+      decoration: BoxDecoration(
+        color: Color.lerp(AppTheme.gray100, AppTheme.gray200, _anim.value),
+        borderRadius: BorderRadius.circular(16),
       ),
-    );
-  }
+    ),
+  );
 }
 
-// ─── Modèle Mock pour la démo ────────────────────────────────────────────────
+// ─── Mock ─────────────────────────────────────────────────────────────────────
 
 class _MockAd {
   final String title;
