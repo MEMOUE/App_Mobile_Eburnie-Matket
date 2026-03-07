@@ -9,8 +9,14 @@ import '../../config/app_theme.dart';
 class DetailAnnonceScreen extends StatefulWidget {
   final String adId;
   final VoidCallback? onGoToLogin;
+  final VoidCallback? onGoToEdit;
 
-  const DetailAnnonceScreen({super.key, required this.adId, this.onGoToLogin});
+  const DetailAnnonceScreen({
+    super.key,
+    required this.adId,
+    this.onGoToLogin,
+    this.onGoToEdit,
+  });
 
   @override
   State<DetailAnnonceScreen> createState() => _DetailAnnonceScreenState();

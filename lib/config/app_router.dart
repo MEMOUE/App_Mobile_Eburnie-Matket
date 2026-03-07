@@ -13,6 +13,7 @@ import '../services/auth_service.dart';
 import '../screens/annonces/create_annonce_screen.dart';
 import '../screens/annonces/list_annonce_screen.dart';
 import '../screens/annonces/detail_annonce_screen.dart';
+import '../screens/annonces/my_ds_screen.dart';
 
 class AppRouter {
   // Routes publiques (accessibles sans connexion)
@@ -40,10 +41,7 @@ class AppRouter {
 
       final isPublic = _publicPaths.any((p) => path.startsWith(p));
 
-      // Connecté sur un écran auth → dashboard
       if (isAuth && isAuthScreen) return '/dashboard';
-
-      // Non connecté sur route protégée → login
       if (!isAuth && !isPublic) return '/login';
 
       return null;
@@ -64,7 +62,7 @@ class AppRouter {
                 ? context.go('/annonces')
                 : context.go('/annonces?category=$cat'),
             onGoToNewAd: () => AuthService().isAuthenticated
-                ? context.go('/dashboard/new-ad')
+                ? context.go('/create-ad')
                 : context.go('/login'),
           ),
         ),
@@ -122,7 +120,7 @@ class AppRouter {
           DashboardScreen(
             onGoToProfile: () => context.go('/dashboard/profile-edit'),
             onGoToMyAds: () => context.go('/my-ads'),
-            onGoToNewAd: () => context.go('/dashboard/new-ad'),
+            onGoToNewAd: () => context.go('/create-ad'),
             onGoToHome: () => context.go('/accueil'),
             onLogout: () async {
               await AuthService().logout();
@@ -148,43 +146,80 @@ class AppRouter {
             pageBuilder: (context, state) =>
                 _slideTransition(state, const _ChangePasswordPlaceholder()),
           ),
-          GoRoute(
-            path: 'new-ad',
-            pageBuilder: (context, state) =>
-                _slideTransition(state, const _NewAdPlaceholder()),
-          ),
         ],
       ),
 
-      // ── Mes annonces ──────────────────────────────────────────────────────
+      // ── Mes annonces (protégé) ─────────────────────────────────────────────
       GoRoute(
         path: '/my-ads',
         pageBuilder: (context, state) =>
-            _slideTransition(state, const _MyAdsPlaceholder()),
+            _slideTransition(state, const MyAdsScreen()),
       ),
 
-      // ── Annonces (public) ─────────────────────────────────────────────────
+      // ── Créer une annonce (protégé) ────────────────────────────────────────
+      GoRoute(
+        path: '/create-ad',
+        pageBuilder: (context, state) =>
+            _slideTransition(state, const CreateAnnonceScreen()),
+      ),
+
+      // ── Modifier une annonce (protégé) ─────────────────────────────────────
+      GoRoute(
+        path: '/edit-ad/:id',
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['id'] ?? '';
+          return _slideTransition(state, CreateAnnonceScreen(adId: id));
+        },
+      ),
+
+      // ── Liste annonces (public) ────────────────────────────────────────────
+      // ListAnnonceScreen(initialCategory, initialCity, initialSearch, onGoToLogin)
       GoRoute(
         path: '/annonces',
         pageBuilder: (context, state) {
-          final cat = state.uri.queryParameters['category'] ?? '';
-          return _slideTransition(state, _AnnoncesPlaceholder(category: cat));
+          final cat = state.uri.queryParameters['category'];
+          final city = state.uri.queryParameters['city'];
+          final search = state.uri.queryParameters['search'];
+          return _slideTransition(
+            state,
+            ListAnnonceScreen(
+              initialCategory: cat,
+              initialCity: city,
+              initialSearch: search,
+              onGoToLogin: () => context.go('/login'),
+            ),
+          );
         },
       ),
+
+      // ── Détail annonce (public) ────────────────────────────────────────────
+      // DetailAnnonceScreen(adId, onGoToLogin)
       GoRoute(
         path: '/annonces/:id',
         pageBuilder: (context, state) {
           final id = state.pathParameters['id'] ?? '';
-          return _slideTransition(state, _AdDetailPlaceholder(id: id));
+          return _slideTransition(
+            state,
+            DetailAnnonceScreen(
+              adId: id,
+              onGoToLogin: () => context.go('/login'),
+            ),
+          );
         },
       ),
 
-      // ── Recherche (public) ────────────────────────────────────────────────
+      // ── Recherche (public) ─────────────────────────────────────────────────
       GoRoute(
         path: '/search',
         pageBuilder: (context, state) {
-          final q = state.uri.queryParameters['q'] ?? '';
-          return _slideTransition(state, _SearchPlaceholder(query: q));
+          final q = state.uri.queryParameters['q'];
+          return _slideTransition(
+            state,
+            ListAnnonceScreen(
+              initialSearch: q,
+              onGoToLogin: () => context.go('/login'),
+            ),
+          );
         },
       ),
     ],
@@ -273,7 +308,7 @@ class AppRouter {
   }
 }
 
-// ── Placeholders ──────────────────────────────────────────────────────────────
+// ── Placeholder ───────────────────────────────────────────────────────────────
 
 class _ChangePasswordPlaceholder extends StatelessWidget {
   const _ChangePasswordPlaceholder();
@@ -282,82 +317,6 @@ class _ChangePasswordPlaceholder extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Changer le mot de passe')),
       body: const Center(child: Text('🔒 À implémenter')),
-    );
-  }
-}
-
-class _NewAdPlaceholder extends StatelessWidget {
-  const _NewAdPlaceholder();
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Nouvelle annonce')),
-      body: const Center(child: Text('📝 À implémenter')),
-    );
-  }
-}
-
-class _MyAdsPlaceholder extends StatelessWidget {
-  const _MyAdsPlaceholder();
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Mes annonces')),
-      body: const Center(child: Text('📋 À implémenter')),
-    );
-  }
-}
-
-class _AnnoncesPlaceholder extends StatelessWidget {
-  final String category;
-  const _AnnoncesPlaceholder({this.category = ''});
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(category.isEmpty ? 'Toutes les annonces' : category),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new),
-          onPressed: () => context.go('/accueil'),
-        ),
-      ),
-      body: const Center(child: Text('🗂️ Liste des annonces — À implémenter')),
-    );
-  }
-}
-
-class _AdDetailPlaceholder extends StatelessWidget {
-  final String id;
-  const _AdDetailPlaceholder({required this.id});
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Annonce #$id'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new),
-          onPressed: () => context.go('/accueil'),
-        ),
-      ),
-      body: Center(child: Text('🔍 Détail annonce $id — À implémenter')),
-    );
-  }
-}
-
-class _SearchPlaceholder extends StatelessWidget {
-  final String query;
-  const _SearchPlaceholder({this.query = ''});
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(query.isEmpty ? 'Recherche' : '"$query"'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new),
-          onPressed: () => context.go('/accueil'),
-        ),
-      ),
-      body: Center(child: Text('🔍 Résultats pour "$query" — À implémenter')),
     );
   }
 }

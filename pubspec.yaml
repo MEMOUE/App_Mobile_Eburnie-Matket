@@ -11,38 +11,38 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
 
-  # ── HTTP & Networking ──────────────────────────────────────────────────────
+  # ── HTTP & Networking ────────────────────────────────────────────────────
   http: ^1.2.1
   dio: ^5.4.3+1
 
-  # ── Storage ───────────────────────────────────────────────────────────────
+  # ── Storage ──────────────────────────────────────────────────────────────
   shared_preferences: ^2.2.3
   flutter_secure_storage: ^9.0.0
 
-  # ── UI & Design ───────────────────────────────────────────────────────────
+  # ── UI & Design ──────────────────────────────────────────────────────────
   google_fonts: ^6.2.1
   flutter_svg: ^2.0.10+1
   cached_network_image: ^3.3.1
   shimmer: ^3.0.0
   lottie: ^3.1.0
 
-  # ── Forms & Validation ────────────────────────────────────────────────────
+  # ── Forms & Validation ───────────────────────────────────────────────────
   reactive_forms: ^17.0.1
 
-  # ── Image ─────────────────────────────────────────────────────────────────
+  # ── Image ────────────────────────────────────────────────────────────────
   image_picker: ^1.1.1
   flutter_image_compress: ^2.3.0
 
-  # ── Authentification ──────────────────────────────────────────────────────
+  # ── Authentification ─────────────────────────────────────────────────────
   google_sign_in: ^6.2.1
 
-  # ── Navigation ────────────────────────────────────────────────────────────
+  # ── Navigation ───────────────────────────────────────────────────────────
   go_router: ^13.2.0
 
-  # ── State Management ──────────────────────────────────────────────────────
+  # ── State Management ─────────────────────────────────────────────────────
   provider: ^6.1.2
 
-  # ── Utils ─────────────────────────────────────────────────────────────────
+  # ── Utils ────────────────────────────────────────────────────────────────
   intl: ^0.20.2
   url_launcher: ^6.3.0
 
@@ -50,10 +50,17 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.13.1   # ← ici, dans dev_dependencies
+
+# ── Config icône (à la racine, pas dans flutter:) ──────────────────────────
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/logo.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#FFFFFF"
 
 flutter:
   uses-material-design: true
-  # Décommenter après avoir créé ces dossiers :
-  # assets:
-  #   - assets/images/
-  #   - assets/icons/
+  assets:
+    - assets/images/     # ← décommenté
