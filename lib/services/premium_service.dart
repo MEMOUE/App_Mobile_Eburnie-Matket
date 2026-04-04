@@ -27,7 +27,6 @@ class PremiumService {
       final response = await http
           .get(Uri.parse('${_baseUrl}plans/'), headers: _headers)
           .timeout(AppConfig.connectTimeout);
-
       if (response.statusCode == 200) {
         final data = json.decode(utf8.decode(response.bodyBytes));
         final list = data is List ? data : (data['results'] ?? data);
@@ -42,12 +41,13 @@ class PremiumService {
 
   // ── Souscrire à un plan ───────────────────────────────────────────────────
   // POST /api/premium/subscribe/
-  // Réponse : SubscribeResponse (avec token FedaPay, payment_url, etc.)
+  // { plan_id, payment_method, phone_number, duration_months }
 
   Future<SubscribeResponse> subscribe({
     required int planId,
     required String paymentMethod, // 'wave' | 'orange_money'
     required String phoneNumber,
+    int durationMonths = 1, // ← nouveau : 1 à 12 mois
   }) async {
     final response = await http
         .post(
@@ -57,6 +57,7 @@ class PremiumService {
             'plan_id': planId,
             'payment_method': paymentMethod,
             'phone_number': phoneNumber,
+            'duration_months': durationMonths,
           }),
         )
         .timeout(AppConfig.connectTimeout);
@@ -69,11 +70,8 @@ class PremiumService {
     throw _parseError(response);
   }
 
-  // ── Activer un abonnement après confirmation FedaPay ──────────────────────
+  // ── Activer un abonnement ─────────────────────────────────────────────────
   // POST /api/premium/subscriptions/{id}/activate/
-  // Retourne { subscription: { status: 'active' | 'pending', ... } }
-  // 200 + status == 'active' → succès
-  // 202 ou status != 'active' → encore en attente, continuer le polling
 
   Future<PremiumSubscription> activateSubscription(int subscriptionId) async {
     final response = await http
@@ -87,7 +85,6 @@ class PremiumService {
         response.statusCode == 201 ||
         response.statusCode == 202) {
       final data = json.decode(utf8.decode(response.bodyBytes));
-      // Le backend renvoie { subscription: {...} }
       final subJson = data['subscription'] as Map<String, dynamic>? ?? data;
       return PremiumSubscription.fromJson(subJson);
     }
@@ -101,7 +98,6 @@ class PremiumService {
       final response = await http
           .get(Uri.parse('${_baseUrl}my-subscriptions/'), headers: _headers)
           .timeout(AppConfig.connectTimeout);
-
       if (response.statusCode == 200) {
         final data = json.decode(utf8.decode(response.bodyBytes));
         final list = data is List ? data : (data['results'] ?? data);
@@ -123,7 +119,6 @@ class PremiumService {
       final response = await http
           .get(Uri.parse('${_baseUrl}check-status/'), headers: _headers)
           .timeout(AppConfig.connectTimeout);
-
       if (response.statusCode == 200) {
         return PremiumStatus.fromJson(
           json.decode(utf8.decode(response.bodyBytes)),
@@ -145,7 +140,6 @@ class PremiumService {
           headers: _headers,
         )
         .timeout(AppConfig.connectTimeout);
-
     if (response.statusCode != 200 && response.statusCode != 204) {
       throw _parseError(response);
     }
