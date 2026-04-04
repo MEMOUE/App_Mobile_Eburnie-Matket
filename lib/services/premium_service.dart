@@ -41,10 +41,12 @@ class PremiumService {
   }
 
   // ── Souscrire à un plan ───────────────────────────────────────────────────
+  // POST /api/premium/subscribe/
+  // Réponse : SubscribeResponse (avec token FedaPay, payment_url, etc.)
 
   Future<SubscribeResponse> subscribe({
     required int planId,
-    required String paymentMethod, // 'wave' | 'orange_money' | 'mtn_money'
+    required String paymentMethod, // 'wave' | 'orange_money'
     required String phoneNumber,
   }) async {
     final response = await http
@@ -63,6 +65,31 @@ class PremiumService {
       return SubscribeResponse.fromJson(
         json.decode(utf8.decode(response.bodyBytes)),
       );
+    }
+    throw _parseError(response);
+  }
+
+  // ── Activer un abonnement après confirmation FedaPay ──────────────────────
+  // POST /api/premium/subscriptions/{id}/activate/
+  // Retourne { subscription: { status: 'active' | 'pending', ... } }
+  // 200 + status == 'active' → succès
+  // 202 ou status != 'active' → encore en attente, continuer le polling
+
+  Future<PremiumSubscription> activateSubscription(int subscriptionId) async {
+    final response = await http
+        .post(
+          Uri.parse('${_baseUrl}subscriptions/$subscriptionId/activate/'),
+          headers: _headers,
+        )
+        .timeout(AppConfig.connectTimeout);
+
+    if (response.statusCode == 200 ||
+        response.statusCode == 201 ||
+        response.statusCode == 202) {
+      final data = json.decode(utf8.decode(response.bodyBytes));
+      // Le backend renvoie { subscription: {...} }
+      final subJson = data['subscription'] as Map<String, dynamic>? ?? data;
+      return PremiumSubscription.fromJson(subJson);
     }
     throw _parseError(response);
   }
@@ -132,6 +159,7 @@ class PremiumService {
       if (data is Map) {
         if (data['detail'] != null) return Exception(data['detail']);
         if (data['message'] != null) return Exception(data['message']);
+        if (data['error'] != null) return Exception(data['error']);
         final errors = <String>[];
         data.forEach((k, v) {
           if (v is List) errors.addAll(v.map((e) => e.toString()));

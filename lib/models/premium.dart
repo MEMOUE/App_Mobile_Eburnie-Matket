@@ -45,7 +45,8 @@ class PremiumPlan {
     id: json['id'] ?? 0,
     name: json['name'] ?? '',
     planType: json['plan_type'] ?? 'basic',
-    price: (json['price'] ?? 0).toDouble(),
+    // Le backend peut renvoyer un String "1000.00" (DecimalField DRF)
+    price: _parsePrice(json['price']),
     currency: json['currency'] ?? 'XOF',
     maxAds: json['max_ads'],
     durationDays: json['duration_days'] ?? 30,
@@ -56,9 +57,18 @@ class PremiumPlan {
             .toList() ??
         [],
   );
+
+  static double _parsePrice(dynamic raw) {
+    if (raw == null) return 0.0;
+    if (raw is num) return raw.toDouble();
+    return double.tryParse(raw.toString()) ?? 0.0;
+  }
 }
 
-/// Abonnement actif de l'utilisateur
+// ─────────────────────────────────────────────────────────────────────────────
+// Abonnement actif
+// ─────────────────────────────────────────────────────────────────────────────
+
 class PremiumSubscription {
   final int id;
   final PremiumPlan plan;
@@ -89,7 +99,9 @@ class PremiumSubscription {
   factory PremiumSubscription.fromJson(Map<String, dynamic> json) =>
       PremiumSubscription(
         id: json['id'] ?? 0,
-        plan: PremiumPlan.fromJson(json['plan'] ?? {}),
+        plan: PremiumPlan.fromJson(
+          json['plan'] is Map ? json['plan'] as Map<String, dynamic> : {},
+        ),
         status: json['status'] ?? 'pending',
         startDate: json['start_date'],
         endDate: json['end_date'],
@@ -102,7 +114,10 @@ class PremiumSubscription {
       );
 }
 
-/// Statut premium de l'utilisateur
+// ─────────────────────────────────────────────────────────────────────────────
+// Statut premium de l'utilisateur
+// ─────────────────────────────────────────────────────────────────────────────
+
 class PremiumStatus {
   final bool isPremium;
   final bool canCreateAd;
@@ -124,56 +139,91 @@ class PremiumStatus {
     remainingAds: json['remaining_ads'] ?? 0,
     maxFreeAds: json['max_free_ads'] ?? 5,
     activeSubscription: json['active_subscription'] != null
-        ? PremiumSubscription.fromJson(json['active_subscription'])
+        ? PremiumSubscription.fromJson(
+            json['active_subscription'] as Map<String, dynamic>,
+          )
         : null,
   );
 }
 
-/// Réponse après souscription
+// ─────────────────────────────────────────────────────────────────────────────
+// Réponse après souscription — alignée avec le contrat FedaPay du backend
+// (miroir de SubscribeResponse dans premium.service.ts Angular)
+// ─────────────────────────────────────────────────────────────────────────────
+
 class SubscribeResponse {
-  final String message;
-  final PremiumSubscription subscription;
-  final PaymentInfo paymentInfo;
+  /// ID interne de l'abonnement (pour le polling d'activation)
+  final int subscriptionId;
+
+  /// Référence de transaction
+  final String reference;
+
+  /// ID FedaPay de la transaction
+  final int fedapayId;
+
+  /// Token FedaPay à passer à FedaPay.init() / SDK
+  final String token;
+
+  /// Clé publique FedaPay (sandbox ou production)
+  final String publicKey;
+
+  /// URL de paiement de secours si la popup est bloquée
+  final String paymentUrl;
+
+  final double amount;
+  final String currency;
+  final PremiumPlan plan;
 
   const SubscribeResponse({
-    required this.message,
-    required this.subscription,
-    required this.paymentInfo,
+    required this.subscriptionId,
+    required this.reference,
+    required this.fedapayId,
+    required this.token,
+    required this.publicKey,
+    required this.paymentUrl,
+    required this.amount,
+    required this.currency,
+    required this.plan,
   });
 
   factory SubscribeResponse.fromJson(Map<String, dynamic> json) =>
       SubscribeResponse(
-        message: json['message'] ?? '',
-        subscription: PremiumSubscription.fromJson(json['subscription'] ?? {}),
-        paymentInfo: PaymentInfo.fromJson(json['payment_info'] ?? {}),
+        subscriptionId: json['subscription_id'] ?? 0,
+        reference: json['reference'] ?? '',
+        fedapayId: json['fedapay_id'] ?? 0,
+        token: json['token'] ?? '',
+        publicKey: json['public_key'] ?? '',
+        paymentUrl: json['payment_url'] ?? '',
+        amount: (json['amount'] ?? 0).toDouble(),
+        currency: json['currency'] ?? 'XOF',
+        plan: json['plan'] != null
+            ? PremiumPlan.fromJson(json['plan'] as Map<String, dynamic>)
+            : PremiumPlan(
+                id: 0,
+                name: '',
+                planType: 'basic',
+                price: 0,
+                currency: 'XOF',
+                durationDays: 30,
+                description: '',
+                features: [],
+              ),
       );
 }
 
-/// Informations de paiement retournées par l'API
-class PaymentInfo {
-  final String method;
-  final String phone;
-  final double amount;
-  final String reference;
-  final List<String> instructions;
+// ─────────────────────────────────────────────────────────────────────────────
+// Réponse de l'endpoint activate/
+// ─────────────────────────────────────────────────────────────────────────────
 
-  const PaymentInfo({
-    required this.method,
-    required this.phone,
-    required this.amount,
-    required this.reference,
-    required this.instructions,
-  });
+class ActivateResponse {
+  final PremiumSubscription subscription;
 
-  factory PaymentInfo.fromJson(Map<String, dynamic> json) {
-    final instrMap = json['instructions'] as Map<String, dynamic>? ?? {};
-    final instrList = instrMap['instructions'] as List<dynamic>? ?? [];
-    return PaymentInfo(
-      method: json['method'] ?? '',
-      phone: json['phone'] ?? '',
-      amount: (json['amount'] ?? 0).toDouble(),
-      reference: json['reference'] ?? '',
-      instructions: instrList.map((e) => e.toString()).toList(),
-    );
-  }
+  const ActivateResponse({required this.subscription});
+
+  factory ActivateResponse.fromJson(Map<String, dynamic> json) =>
+      ActivateResponse(
+        subscription: PremiumSubscription.fromJson(
+          json['subscription'] as Map<String, dynamic>,
+        ),
+      );
 }
