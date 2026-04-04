@@ -273,9 +273,9 @@ class _AccueilScreenState extends State<AccueilScreen>
                   ),
                 )
               else ...[
-                SliverToBoxAdapter(child: _buildFeaturedSection()),
-                if (_urgentAds.isNotEmpty)
-                  SliverToBoxAdapter(child: _buildUrgentSection()),
+                // SliverToBoxAdapter(child: _buildFeaturedSection()),
+                // if (_urgentAds.isNotEmpty)
+                //   SliverToBoxAdapter(child: _buildUrgentSection()),
                 if (_recentAds.isNotEmpty)
                   SliverToBoxAdapter(child: _buildRecentSection()),
                 SliverToBoxAdapter(child: _buildCategoriesSection()),
@@ -459,123 +459,123 @@ class _AccueilScreenState extends State<AccueilScreen>
   }
 
   // ── Section Vedettes ───────────────────────────────────────────────────────
-  Widget _buildFeaturedSection() {
-    if (_featuredAds.isEmpty) return const SizedBox.shrink();
-    return FadeTransition(
-      opacity: _fadeAnim,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _SectionHeader(
-            title: 'Annonces en Vedette',
-            subtitle: 'Meilleures offres du moment',
-            onSeeAll: () => widget.onGoToCategory?.call(''),
-          ),
-          const SizedBox(height: 14),
-          // Carrousel bannière
-          SizedBox(
-            height: 220,
-            child: PageView.builder(
-              controller: _bannerPageCtrl,
-              onPageChanged: (p) => setState(() => _bannerPage = p),
-              itemCount: _featuredAds.length,
-              itemBuilder: (_, i) => _BannerCard(
-                ad: _featuredAds[i],
-                onTap: () => widget.onGoToAdDetail?.call(_featuredAds[i].id),
-                onWhatsApp: () => _launchWhatsApp(_featuredAds[i]),
-                onCall: () => _launchCall(_featuredAds[i]),
-                onSms: () => _launchSms(_featuredAds[i]),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          // Indicateurs de page
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(
-              _featuredAds.length,
-              (i) => AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                width: i == _bannerPage ? 20 : 6,
-                height: 6,
-                margin: const EdgeInsets.symmetric(horizontal: 3),
-                decoration: BoxDecoration(
-                  color: i == _bannerPage
-                      ? AppTheme.primaryOrange
-                      : AppTheme.gray200,
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          // Grille 2 colonnes
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                childAspectRatio: 0.72,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-              ),
-              itemCount: _featuredAds.length.clamp(0, 6),
-              itemBuilder: (_, i) => _AdGridCard(
-                ad: _featuredAds[i],
-                onTap: () => widget.onGoToAdDetail?.call(_featuredAds[i].id),
-                onWhatsApp: () => _launchWhatsApp(_featuredAds[i]),
-                onCall: () => _launchCall(_featuredAds[i]),
-                onSms: () => _launchSms(_featuredAds[i]),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-        ],
-      ),
-    );
-  }
+  // Widget _buildFeaturedSection() {
+  //   if (_featuredAds.isEmpty) return const SizedBox.shrink();
+  //   return FadeTransition(
+  //     opacity: _fadeAnim,
+  //     child: Column(
+  //       crossAxisAlignment: CrossAxisAlignment.start,
+  //       children: [
+  //         _SectionHeader(
+  //           title: 'Annonces en Vedette',
+  //           subtitle: 'Meilleures offres du moment',
+  //           onSeeAll: () => widget.onGoToCategory?.call(''),
+  //         ),
+  //         const SizedBox(height: 14),
+  //         // Carrousel bannière
+  //         SizedBox(
+  //           height: 220,
+  //           child: PageView.builder(
+  //             controller: _bannerPageCtrl,
+  //             onPageChanged: (p) => setState(() => _bannerPage = p),
+  //             itemCount: _featuredAds.length,
+  //             itemBuilder: (_, i) => _BannerCard(
+  //               ad: _featuredAds[i],
+  //               onTap: () => widget.onGoToAdDetail?.call(_featuredAds[i].id),
+  //               onWhatsApp: () => _launchWhatsApp(_featuredAds[i]),
+  //               onCall: () => _launchCall(_featuredAds[i]),
+  //               onSms: () => _launchSms(_featuredAds[i]),
+  //             ),
+  //           ),
+  //         ),
+  //         const SizedBox(height: 10),
+  //         // Indicateurs de page
+  //         Row(
+  //           mainAxisAlignment: MainAxisAlignment.center,
+  //           children: List.generate(
+  //             _featuredAds.length,
+  //             (i) => AnimatedContainer(
+  //               duration: const Duration(milliseconds: 300),
+  //               width: i == _bannerPage ? 20 : 6,
+  //               height: 6,
+  //               margin: const EdgeInsets.symmetric(horizontal: 3),
+  //               decoration: BoxDecoration(
+  //                 color: i == _bannerPage
+  //                     ? AppTheme.primaryOrange
+  //                     : AppTheme.gray200,
+  //                 borderRadius: BorderRadius.circular(3),
+  //               ),
+  //             ),
+  //           ),
+  //         ),
+  //         const SizedBox(height: 16),
+  //         // Grille 2 colonnes
+  //         Padding(
+  //           padding: const EdgeInsets.symmetric(horizontal: 16),
+  //           child: GridView.builder(
+  //             shrinkWrap: true,
+  //             physics: const NeverScrollableScrollPhysics(),
+  //             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+  //               crossAxisCount: 2,
+  //               childAspectRatio: 0.72,
+  //               crossAxisSpacing: 12,
+  //               mainAxisSpacing: 12,
+  //             ),
+  //             itemCount: _featuredAds.length.clamp(0, 6),
+  //             itemBuilder: (_, i) => _AdGridCard(
+  //               ad: _featuredAds[i],
+  //               onTap: () => widget.onGoToAdDetail?.call(_featuredAds[i].id),
+  //               onWhatsApp: () => _launchWhatsApp(_featuredAds[i]),
+  //               onCall: () => _launchCall(_featuredAds[i]),
+  //               onSms: () => _launchSms(_featuredAds[i]),
+  //             ),
+  //           ),
+  //         ),
+  //         const SizedBox(height: 8),
+  //       ],
+  //     ),
+  //   );
+  // }
 
   // ── Section Urgentes ───────────────────────────────────────────────────────
-  Widget _buildUrgentSection() {
-    return FadeTransition(
-      opacity: _fadeAnim,
-      child: Container(
-        color: const Color(0xFFFFF5F5),
-        padding: const EdgeInsets.only(top: 24, bottom: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _SectionHeader(
-              title: '🔥 Annonces Urgentes',
-              subtitle: 'Ne ratez pas ces opportunités !',
-              titleColor: AppTheme.errorRed,
-              onSeeAll: () => widget.onGoToCategory?.call(''),
-            ),
-            const SizedBox(height: 14),
-            SizedBox(
-              height: 230,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: _urgentAds.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 12),
-                itemBuilder: (_, i) => _UrgentCard(
-                  ad: _urgentAds[i],
-                  onTap: () => widget.onGoToAdDetail?.call(_urgentAds[i].id),
-                  onWhatsApp: () => _launchWhatsApp(_urgentAds[i]),
-                  onCall: () => _launchCall(_urgentAds[i]),
-                  onSms: () => _launchSms(_urgentAds[i]),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-        ),
-      ),
-    );
-  }
+  // Widget _buildUrgentSection() {
+  //   return FadeTransition(
+  //     opacity: _fadeAnim,
+  //     child: Container(
+  //       color: const Color(0xFFFFF5F5),
+  //       padding: const EdgeInsets.only(top: 24, bottom: 8),
+  //       child: Column(
+  //         crossAxisAlignment: CrossAxisAlignment.start,
+  //         children: [
+  //           _SectionHeader(
+  //             title: '🔥 Annonces Urgentes',
+  //             subtitle: 'Ne ratez pas ces opportunités !',
+  //             titleColor: AppTheme.errorRed,
+  //             onSeeAll: () => widget.onGoToCategory?.call(''),
+  //           ),
+  //           const SizedBox(height: 14),
+  //           SizedBox(
+  //             height: 230,
+  //             child: ListView.separated(
+  //               scrollDirection: Axis.horizontal,
+  //               padding: const EdgeInsets.symmetric(horizontal: 16),
+  //               itemCount: _urgentAds.length,
+  //               separatorBuilder: (_, __) => const SizedBox(width: 12),
+  //               itemBuilder: (_, i) => _UrgentCard(
+  //                 ad: _urgentAds[i],
+  //                 onTap: () => widget.onGoToAdDetail?.call(_urgentAds[i].id),
+  //                 onWhatsApp: () => _launchWhatsApp(_urgentAds[i]),
+  //                 onCall: () => _launchCall(_urgentAds[i]),
+  //                 onSms: () => _launchSms(_urgentAds[i]),
+  //               ),
+  //             ),
+  //           ),
+  //           const SizedBox(height: 16),
+  //         ],
+  //       ),
+  //     ),
+  //   );
+  // }
 
   // ── Section Récentes ───────────────────────────────────────────────────────
   Widget _buildRecentSection() {

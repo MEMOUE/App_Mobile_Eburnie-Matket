@@ -8,6 +8,7 @@ import '../../models/user.dart';
 import '../../models/premium.dart';
 import '../../services/auth_service.dart';
 import '../../services/premium_service.dart';
+import '../../services/annonce_service.dart';
 
 // ─── Modèles de données ──────────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ class DashboardScreen extends StatefulWidget {
   final VoidCallback? onGoToMyAds;
   final VoidCallback? onGoToNewAd;
   final VoidCallback? onGoToHome;
-  final VoidCallback? onGoToPremium; // ← NOUVEAU
+  final VoidCallback? onGoToPremium;
   final VoidCallback? onLogout;
 
   const DashboardScreen({
@@ -62,7 +63,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool _loadingStats = true;
   bool _avatarError = false;
   DashboardStats _stats = const DashboardStats();
-  PremiumStatus? _premiumStatus; // ← NOUVEAU
+  PremiumStatus? _premiumStatus;
 
   late AnimationController _heroController;
   late AnimationController _cardsController;
@@ -115,6 +116,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   Future<void> _loadData() async {
     setState(() => _loadingStats = true);
 
+    // 1. Profil utilisateur
     try {
       _user = AuthService().currentUser;
       if (_user == null) {
@@ -122,36 +124,40 @@ class _DashboardScreenState extends State<DashboardScreen>
       }
     } catch (_) {}
 
-    // Charger le statut premium en parallèle
-    PremiumStatus? premiumStatus;
-    try {
-      premiumStatus = await PremiumService().checkStatus();
-    } catch (_) {
-      // Fallback si l'API premium n'est pas disponible
-      premiumStatus = PremiumStatus(
-        isPremium: _user?.isPremiumActive ?? false,
-        canCreateAd: true,
-        remainingAds: 3,
-        maxFreeAds: 5,
-      );
-    }
+    // 2. Données réelles en parallèle : statut premium + mes annonces
+    final results = await Future.wait([
+      PremiumService().checkStatus().catchError(
+        (_) => PremiumStatus(
+          isPremium: _user?.isPremiumActive ?? false,
+          canCreateAd: true,
+          remainingAds: 3,
+          maxFreeAds: 5,
+        ),
+      ),
+      AnnonceService().getMyAds().catchError((_) => <dynamic>[]),
+    ]);
 
-    await Future.delayed(const Duration(milliseconds: 200));
+    final premiumStatus = results[0] as PremiumStatus;
+    final myAds = results[1] as List;
+
+    final totalAds = myAds.length;
+    final activeAds = myAds.where((a) => a.status == 'active').length;
+    final pendingAds = myAds.where((a) => a.status == 'pending').length;
+    final totalViews = myAds.fold<int>(
+      0,
+      (sum, a) => sum + (a.viewsCount as int? ?? 0),
+    );
 
     if (mounted) {
-      final remaining = premiumStatus?.remainingAds ?? 3;
-      final maxFree = premiumStatus?.maxFreeAds ?? 5;
-      final used = maxFree - remaining;
-
       setState(() {
         _premiumStatus = premiumStatus;
         _stats = DashboardStats(
-          totalAds: 3,
-          activeAds: used.clamp(0, maxFree),
-          pendingAds: 1,
-          totalViews: 148,
-          remainingAds: remaining,
-          maxFreeAds: maxFree,
+          totalAds: totalAds,
+          activeAds: activeAds,
+          pendingAds: pendingAds,
+          totalViews: totalViews,
+          remainingAds: premiumStatus.remainingAds,
+          maxFreeAds: premiumStatus.maxFreeAds,
         );
         _loadingStats = false;
       });
@@ -170,11 +176,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (_user == null) return '?';
     final f = _user!.firstName?.isNotEmpty == true ? _user!.firstName![0] : '';
     final l = _user!.lastName?.isNotEmpty == true ? _user!.lastName![0] : '';
-    return (f + l).toUpperCase().isNotEmpty
-        ? (f + l).toUpperCase()
-        : _user!.username.isNotEmpty
-        ? _user!.username[0].toUpperCase()
-        : '?';
+    final initials = (f + l).toUpperCase();
+    if (initials.isNotEmpty) return initials;
+    return _user!.username.isNotEmpty ? _user!.username[0].toUpperCase() : '?';
   }
 
   void _confirmLogout() {
@@ -218,7 +222,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     const SizedBox(height: 14),
                     _buildQuickActions(),
                     const SizedBox(height: 28),
-                    _buildPremiumSection(), // ← section mise à jour
+                    _buildPremiumSection(),
                     const SizedBox(height: 28),
                     _buildSectionTitle('Activité récente'),
                     const SizedBox(height: 14),
@@ -240,7 +244,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Widget _buildAppBar() {
     return SliverAppBar(
-      expandedHeight: 230,
+      expandedHeight: 210,
       pinned: true,
       backgroundColor: AppTheme.primaryOrange,
       elevation: 0,
@@ -290,6 +294,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // Icônes en haut à droite
                           Row(
                             children: [
                               const Spacer(),
@@ -313,6 +318,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                               ),
                             ],
                           ),
+                          // Avatar + infos utilisateur
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
@@ -326,45 +332,25 @@ class _DashboardScreenState extends State<DashboardScreen>
                                       'Bonjour 👋',
                                       style: TextStyle(
                                         color: Colors.white.withOpacity(0.85),
-                                        fontSize: 14,
+                                        fontSize: 13,
                                         fontWeight: FontWeight.w400,
                                       ),
                                     ),
-                                    const SizedBox(height: 2),
+                                    const SizedBox(height: 3),
                                     Text(
                                       _user?.fullName ?? 'Utilisateur',
                                       style: const TextStyle(
                                         color: Colors.white,
-                                        fontSize: 22,
+                                        fontSize: 20,
                                         fontWeight: FontWeight.w800,
                                         letterSpacing: -0.3,
                                       ),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.alternate_email,
-                                          color: Colors.white.withOpacity(0.7),
-                                          size: 12,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Flexible(
-                                          child: Text(
-                                            _user?.username ?? '',
-                                            style: TextStyle(
-                                              color: Colors.white.withOpacity(
-                                                0.75,
-                                              ),
-                                              fontSize: 13,
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                                    const SizedBox(height: 6),
+                                    // Badge type de compte (Premium / Gratuit)
+                                    _buildAccountTypeBadge(),
                                   ],
                                 ),
                               ),
@@ -399,6 +385,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
         ),
       ),
+      // Titre affiché quand l'AppBar est réduit (scrollé)
       title: Text(
         _user?.fullName ?? 'Dashboard',
         style: const TextStyle(
@@ -411,15 +398,77 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Widget _buildAvatar() {
-    final avatarUrl = _user?.avatarUrl;
+  /// Badge "⭐ Premium" ou "Gratuit" affiché sous le nom
+  Widget _buildAccountTypeBadge() {
     final isPremium =
         _premiumStatus?.isPremium ?? _user?.isPremiumActive ?? false;
+
+    if (isPremium) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFD700),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.15),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.star_rounded, color: Colors.white, size: 12),
+            SizedBox(width: 4),
+            Text(
+              'Compte Premium',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.4), width: 1),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.person_outline_rounded, color: Colors.white, size: 12),
+          SizedBox(width: 4),
+          Text(
+            'Compte Gratuit',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Avatar avec indicateur de statut (point vert = en ligne)
+  Widget _buildAvatar() {
+    final avatarUrl = _user?.avatarUrl;
     return Stack(
       children: [
         Container(
-          width: 68,
-          height: 68,
+          width: 64,
+          height: 64,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(color: Colors.white, width: 3),
@@ -444,25 +493,20 @@ class _DashboardScreenState extends State<DashboardScreen>
                 : _avatarPlaceholder(),
           ),
         ),
-        if (isPremium)
-          Positioned(
-            bottom: 0,
-            right: 0,
-            child: Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFD700),
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2),
-              ),
-              child: const Icon(
-                Icons.star_rounded,
-                color: Colors.white,
-                size: 12,
-              ),
+        // Indicateur en ligne (point vert en bas à droite)
+        Positioned(
+          bottom: 2,
+          right: 2,
+          child: Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(
+              color: const Color(0xFF22C55E),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
             ),
           ),
+        ),
       ],
     );
   }
@@ -474,7 +518,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         _getUserInitials(),
         style: const TextStyle(
           color: Colors.white,
-          fontSize: 24,
+          fontSize: 22,
           fontWeight: FontWeight.w800,
         ),
       ),
@@ -651,16 +695,12 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  // ── Section Premium (MISE À JOUR) ─────────────────────────────────────────
+  // ── Section Premium ───────────────────────────────────────────────────────
 
   Widget _buildPremiumSection() {
     final isPremium =
         _premiumStatus?.isPremium ?? _user?.isPremiumActive ?? false;
-
-    if (isPremium) {
-      return _buildPremiumActiveBadge();
-    }
-    return _buildFreeAccountCard();
+    return isPremium ? _buildPremiumActiveBadge() : _buildFreeAccountCard();
   }
 
   Widget _buildPremiumActiveBadge() {
@@ -828,7 +868,6 @@ class _DashboardScreenState extends State<DashboardScreen>
               ],
             ),
             const SizedBox(height: 14),
-            // Barre de progression
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: LinearProgressIndicator(
@@ -856,7 +895,6 @@ class _DashboardScreenState extends State<DashboardScreen>
               ),
             ),
             const SizedBox(height: 16),
-            // Avantages premium rapides
             Row(
               children: [
                 _PremiumFeatureChip(
@@ -879,7 +917,6 @@ class _DashboardScreenState extends State<DashboardScreen>
               ],
             ),
             const SizedBox(height: 16),
-            // Bouton Premium → navigate to PremiumScreen
             GestureDetector(
               onTap: widget.onGoToPremium,
               child: Container(
@@ -931,7 +968,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             const SizedBox(height: 8),
             const Center(
               child: Text(
-                'À partir de 5 000 FCFA / mois · Annonces illimitées',
+                'À partir de 1 000 FCFA / mois · Annonces illimitées',
                 style: TextStyle(fontSize: 12, color: AppTheme.gray400),
               ),
             ),
@@ -941,7 +978,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  // ── Activité récente ──────────────────────────────────────────────────────
+  // ── Activité récente (données réelles) ────────────────────────────────────
 
   Widget _buildRecentActivity() {
     if (_loadingStats) {
@@ -951,34 +988,69 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
     if (_stats.totalAds == 0) return _buildEmptyActivity();
 
-    final mockAds = [
-      _MockAd(
-        title: 'iPhone 13 Pro 256GB',
-        price: '320 000 FCFA',
-        status: 'active',
-        views: 42,
-        city: 'Abidjan',
+    // Affiche un message invitant à consulter "Mes annonces" pour les détails réels
+    return GestureDetector(
+      onTap: widget.onGoToMyAds,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: AppTheme.primaryOrangeLight,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.view_list_rounded,
+                color: AppTheme.primaryOrange,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${_stats.totalAds} annonce${_stats.totalAds > 1 ? 's' : ''} publiée${_stats.totalAds > 1 ? 's' : ''}',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.gray900,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${_stats.activeAds} active${_stats.activeAds > 1 ? 's' : ''} · ${_stats.pendingAds} en attente',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.gray500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: AppTheme.gray400,
+              size: 20,
+            ),
+          ],
+        ),
       ),
-      _MockAd(
-        title: 'Moto Honda CB500 2022',
-        price: '1 800 000 FCFA',
-        status: 'active',
-        views: 87,
-        city: 'Bouaké',
-      ),
-      _MockAd(
-        title: 'MacBook Pro M2',
-        price: '750 000 FCFA',
-        status: 'pending',
-        views: 19,
-        city: 'Abidjan',
-      ),
-    ];
-
-    return Column(
-      children: mockAds
-          .map((ad) => _AdActivityCard(ad: ad, onTap: () {}))
-          .toList(),
     );
   }
 
@@ -1300,150 +1372,6 @@ class _QuickActionTile extends StatelessWidget {
   );
 }
 
-// ─── Carte activité ───────────────────────────────────────────────────────────
-
-class _AdActivityCard extends StatelessWidget {
-  final _MockAd ad;
-  final VoidCallback? onTap;
-
-  const _AdActivityCard({required this.ad, this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final isActive = ad.status == 'active';
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: isActive
-                    ? AppTheme.successGreenLight
-                    : const Color(0xFFFEF3C7),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                Icons.sell_outlined,
-                color: isActive
-                    ? AppTheme.successGreenDark
-                    : const Color(0xFFD97706),
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    ad.title,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.gray900,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Text(
-                        ad.price,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.primaryOrange,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Icon(
-                        Icons.location_on_outlined,
-                        size: 12,
-                        color: AppTheme.gray400,
-                      ),
-                      const SizedBox(width: 2),
-                      Text(
-                        ad.city,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppTheme.gray400,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isActive
-                        ? AppTheme.successGreenLight
-                        : const Color(0xFFFEF3C7),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    isActive ? 'Active' : 'En attente',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: isActive
-                          ? AppTheme.successGreenDark
-                          : const Color(0xFFD97706),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.remove_red_eye_outlined,
-                      size: 12,
-                      color: AppTheme.gray400,
-                    ),
-                    const SizedBox(width: 3),
-                    Text(
-                      '${ad.views}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppTheme.gray500,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 // ─── Sheet déconnexion ────────────────────────────────────────────────────────
 
 class _LogoutSheet extends StatelessWidget {
@@ -1622,21 +1550,4 @@ class _SkeletonCardState extends State<_SkeletonCard>
       ),
     ),
   );
-}
-
-// ─── Mock ─────────────────────────────────────────────────────────────────────
-
-class _MockAd {
-  final String title;
-  final String price;
-  final String status;
-  final int views;
-  final String city;
-  _MockAd({
-    required this.title,
-    required this.price,
-    required this.status,
-    required this.views,
-    required this.city,
-  });
 }
