@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../config/app_config.dart';
 import '../../config/app_theme.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/app_widgets.dart';
@@ -10,12 +11,14 @@ class LoginScreen extends StatefulWidget {
   final VoidCallback? onLoginSuccess;
   final VoidCallback? onGoToRegister;
   final VoidCallback? onGoToForgotPassword;
+  final VoidCallback? onGoBack;
 
   const LoginScreen({
     super.key,
     this.onLoginSuccess,
     this.onGoToRegister,
     this.onGoToForgotPassword,
+    this.onGoBack,
   });
 
   @override
@@ -104,7 +107,6 @@ class _LoginScreenState extends State<LoginScreen>
         password: _passwordCtrl.text,
       );
 
-      // Gérer "Se souvenir de moi"
       final prefs = await SharedPreferences.getInstance();
       if (_rememberMe) {
         await prefs.setString(
@@ -120,7 +122,6 @@ class _LoginScreenState extends State<LoginScreen>
           _loading = false;
           _successMessage = 'Bienvenue ${response.user.fullName} !';
         });
-
         await Future.delayed(const Duration(milliseconds: 500));
         widget.onLoginSuccess?.call();
       }
@@ -139,8 +140,6 @@ class _LoginScreenState extends State<LoginScreen>
       _googleLoading = true;
       _errorMessage = '';
     });
-
-    // TODO: Implémenter google_sign_in
     await Future.delayed(const Duration(seconds: 1));
     if (mounted) {
       setState(() {
@@ -150,14 +149,35 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
+  void _handleBack() {
+    if (widget.onGoBack != null) {
+      widget.onGoBack!();
+    } else if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AuthBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(
+              Icons.arrow_back_ios_new,
+              color: AppTheme.gray700,
+              size: 20,
+            ),
+            onPressed: _handleBack,
+            tooltip: 'Retour',
+          ),
+        ),
         body: SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
             child: FadeTransition(
               opacity: _fadeAnim,
               child: SlideTransition(
@@ -169,8 +189,8 @@ class _LoginScreenState extends State<LoginScreen>
                     Center(
                       child: Column(
                         children: [
-                          const SizedBox(height: 8),
-                          Text(
+                          const SizedBox(height: 4),
+                          const Text(
                             'Bienvenue',
                             style: TextStyle(
                               fontSize: 30,
@@ -179,7 +199,7 @@ class _LoginScreenState extends State<LoginScreen>
                             ),
                           ),
                           const SizedBox(height: 8),
-                          Text(
+                          const Text(
                             'Connectez-vous pour accéder à votre compte',
                             style: TextStyle(
                               fontSize: 15,
@@ -191,7 +211,7 @@ class _LoginScreenState extends State<LoginScreen>
                       ),
                     ),
 
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 28),
 
                     // ── Formulaire ───────────────────────────────────────────
                     Container(
@@ -227,28 +247,10 @@ class _LoginScreenState extends State<LoginScreen>
                               const SizedBox(height: 16),
                             ],
 
-                            // Email / Username
-                            AppTextField(
-                              controller: _usernameCtrl,
-                              label: 'Email ou nom d\'utilisateur',
-                              placeholder:
-                                  'Entrez votre email ou nom d\'utilisateur',
-                              prefixIcon: Icons.person_outline,
-                              keyboardType: TextInputType.emailAddress,
-                              textInputAction: TextInputAction.next,
-                              errorText: null,
-                            ),
-                            const SizedBox(height: 4),
-                            TextFormField(
+                            // Champ identifiant
+                            _UsernameField(
                               controller: _usernameCtrl,
                               validator: _validateUsername,
-                              enabled: false,
-                              style: const TextStyle(height: 0),
-                              decoration: const InputDecoration(
-                                border: InputBorder.none,
-                                contentPadding: EdgeInsets.zero,
-                                isDense: true,
-                              ),
                             ),
 
                             const SizedBox(height: 20),
@@ -322,7 +324,6 @@ class _LoginScreenState extends State<LoginScreen>
 
                             const SizedBox(height: 24),
 
-                            // Bouton Se connecter
                             PrimaryButton(
                               label: 'Se connecter',
                               icon: Icons.login,
@@ -333,7 +334,6 @@ class _LoginScreenState extends State<LoginScreen>
 
                             const SizedBox(height: 20),
 
-                            // Lien Register
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -394,7 +394,6 @@ class _LoginScreenState extends State<LoginScreen>
 
                     const SizedBox(height: 24),
 
-                    // ── Badges avantages ─────────────────────────────────────
                     Row(
                       children: [
                         Expanded(
@@ -425,7 +424,49 @@ class _LoginScreenState extends State<LoginScreen>
   }
 }
 
-// ─── Widget PasswordInput ─────────────────────────────────────────────────────
+// ─── Champ identifiant (sans doublon FormField invisible) ─────────────────────
+
+class _UsernameField extends StatelessWidget {
+  final TextEditingController controller;
+  final String? Function(String?)? validator;
+
+  const _UsernameField({required this.controller, this.validator});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Email ou nom d\'utilisateur',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.gray700,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller,
+          keyboardType: TextInputType.emailAddress,
+          textInputAction: TextInputAction.next,
+          validator: validator,
+          style: const TextStyle(color: AppTheme.gray900, fontSize: 15),
+          decoration: const InputDecoration(
+            hintText: 'Entrez votre email ou nom d\'utilisateur',
+            prefixIcon: Icon(
+              Icons.person_outline,
+              color: AppTheme.gray400,
+              size: 20,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── PasswordInput ────────────────────────────────────────────────────────────
 
 class _PasswordInput extends StatefulWidget {
   final TextEditingController controller;
@@ -489,36 +530,29 @@ class _FeatureBadge extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 28),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 12, color: AppTheme.gray600),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// Exposer AppConfig
-class AppConfig {
-  static const String rememberedUsernameKey = 'remembered_username';
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.06),
+          blurRadius: 8,
+          offset: const Offset(0, 3),
+        ),
+      ],
+    ),
+    child: Column(
+      children: [
+        Icon(icon, color: color, size: 28),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, color: AppTheme.gray600),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    ),
+  );
 }

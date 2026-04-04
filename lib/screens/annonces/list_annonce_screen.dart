@@ -13,6 +13,7 @@ class ListAnnonceScreen extends StatefulWidget {
   final String? initialCity;
   final String? initialSearch;
   final VoidCallback? onGoToLogin;
+  final VoidCallback? onGoBack;
 
   const ListAnnonceScreen({
     super.key,
@@ -20,6 +21,7 @@ class ListAnnonceScreen extends StatefulWidget {
     this.initialCity,
     this.initialSearch,
     this.onGoToLogin,
+    this.onGoBack,
   });
 
   @override
@@ -37,7 +39,6 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
   bool _hasMore = true;
   int _totalCount = 0;
 
-  // Filtres
   String? _selectedCategory;
   String? _selectedCity;
   String _searchQuery = '';
@@ -45,32 +46,12 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
   double? _priceMin;
   double? _priceMax;
 
-  // Catégories & villes pour les filtres
   List<Map<String, dynamic>> _categories = [];
   List<Map<String, dynamic>> _cities = [];
 
-  // Contrôleurs
   late TextEditingController _searchCtrl;
   late ScrollController _scrollCtrl;
   Timer? _searchDebounce;
-
-  // Panel filtre ouvert
-  bool _filterPanelOpen = false;
-
-  // ─── Constantes ───────────────────────────────────────────────────────────
-
-  static const _categoryIcons = {
-    'vehicules': '🚗',
-    'emploi': '💼',
-    'immobilier': '🏠',
-    'electronique': '📱',
-    'mode': '👗',
-    'maison': '🏡',
-    'loisirs': '⚽',
-    'services': '🎓',
-    'animaux': '🐾',
-    'autres': '🎨',
-  };
 
   static const _orderingOptions = [
     {'label': 'Plus récentes', 'value': '-created_at'},
@@ -79,8 +60,6 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
     {'label': 'Prix décroissant', 'value': '-price'},
     {'label': 'Plus vues', 'value': '-views_count'},
   ];
-
-  // ─── Cycle de vie ─────────────────────────────────────────────────────────
 
   @override
   void initState() {
@@ -109,12 +88,11 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
     try {
       final cats = await AnnonceService().getCategories();
       final cities = await AnnonceService().getCities();
-      if (mounted) {
+      if (mounted)
         setState(() {
           _categories = cats;
           _cities = cities;
         });
-      }
     } catch (_) {}
   }
 
@@ -143,7 +121,6 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
         ordering: _ordering,
         page: _currentPage,
       );
-
       if (mounted) {
         setState(() {
           _ads.addAll(response.results);
@@ -182,23 +159,6 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
     });
   }
 
-  void _applyFilters() {
-    Navigator.of(context).pop();
-    _loadAds(reset: true);
-  }
-
-  void _clearFilters() {
-    setState(() {
-      _selectedCategory = null;
-      _selectedCity = null;
-      _priceMin = null;
-      _priceMax = null;
-      _ordering = '-created_at';
-    });
-    Navigator.of(context).pop();
-    _loadAds(reset: true);
-  }
-
   // ─── Contact ──────────────────────────────────────────────────────────────
 
   Future<void> _launchWhatsApp(Ad ad) async {
@@ -224,7 +184,6 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
   // ─── Filtre Bottom Sheet ───────────────────────────────────────────────────
 
   void _showFilterSheet() {
-    // Variables temporaires
     String? tmpCategory = _selectedCategory;
     String? tmpCity = _selectedCity;
     String tmpOrdering = _ordering;
@@ -251,7 +210,6 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
             ),
             child: Column(
               children: [
-                // Handle
                 Container(
                   margin: const EdgeInsets.only(top: 12),
                   width: 40,
@@ -261,7 +219,6 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
-                // Header
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                   child: Row(
@@ -295,13 +252,11 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
                   ),
                 ),
                 const Divider(),
-                // Contenu
                 Expanded(
                   child: ListView(
                     controller: sc,
                     padding: const EdgeInsets.all(20),
                     children: [
-                      // Tri
                       _FilterSection(
                         title: 'Trier par',
                         child: Wrap(
@@ -321,7 +276,6 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
                         ),
                       ),
                       const SizedBox(height: 20),
-                      // Catégorie
                       _FilterSection(
                         title: 'Catégorie',
                         child: Wrap(
@@ -341,7 +295,6 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
                         ),
                       ),
                       const SizedBox(height: 20),
-                      // Ville
                       if (_cities.isNotEmpty) ...[
                         _FilterSection(
                           title: 'Ville',
@@ -358,7 +311,11 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
                                   .take(10)
                                   .map(
                                     (c) => _FilterChip(
-                                      label: c['display'] ?? c['name'] ?? '',
+                                      label:
+                                          c['display'] ??
+                                          c['label'] ??
+                                          c['name'] ??
+                                          '',
                                       selected: tmpCity == c['value'],
                                       onTap: () =>
                                           setLocal(() => tmpCity = c['value']),
@@ -370,7 +327,6 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
                         ),
                         const SizedBox(height: 20),
                       ],
-                      // Prix
                       _FilterSection(
                         title: 'Fourchette de prix (FCFA)',
                         child: Row(
@@ -421,7 +377,6 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
                     ],
                   ),
                 ),
-                // Bouton Appliquer
                 Padding(
                   padding: EdgeInsets.fromLTRB(
                     20,
@@ -489,9 +444,7 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
       {'label': 'Animaux', 'value': 'animaux'},
       {'label': 'Autres', 'value': 'autres'},
     ];
-
     final source = _categories.isNotEmpty ? _categories : staticCats;
-
     return source
         .map(
           (c) => _FilterChip(
@@ -501,6 +454,14 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
           ),
         )
         .toList();
+  }
+
+  void _handleBack() {
+    if (widget.onGoBack != null) {
+      widget.onGoBack!();
+    } else if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
   }
 
   // ─── Build ─────────────────────────────────────────────────────────────────
@@ -526,18 +487,32 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
     );
   }
 
+  // ─── Top bar avec bouton retour ────────────────────────────────────────────
+
   Widget _buildTopBar(int activeFilters) {
     return Container(
       color: Colors.white,
       padding: EdgeInsets.only(
         top: MediaQuery.of(context).padding.top + 8,
-        left: 16,
+        left: 8, // réduit pour laisser place au bouton retour
         right: 16,
         bottom: 12,
       ),
       child: Row(
         children: [
-          // Champ de recherche
+          // ── Bouton retour ─────────────────────────────────────────────────
+          IconButton(
+            icon: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: AppTheme.gray700,
+              size: 20,
+            ),
+            onPressed: _handleBack,
+            tooltip: 'Retour',
+            splashRadius: 22,
+          ),
+
+          // ── Champ de recherche ────────────────────────────────────────────
           Expanded(
             child: Container(
               height: 44,
@@ -572,7 +547,8 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
             ),
           ),
           const SizedBox(width: 10),
-          // Bouton filtre
+
+          // ── Bouton filtre ─────────────────────────────────────────────────
           GestureDetector(
             onTap: _showFilterSheet,
             child: Container(
@@ -626,7 +602,6 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
 
   Widget _buildActiveFilterChips() {
     final chips = <Widget>[];
-
     if (_selectedCategory != null) {
       chips.add(
         _ActiveChip(
@@ -649,9 +624,7 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
         ),
       );
     }
-
     if (chips.isEmpty) return const SizedBox.shrink();
-
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
@@ -732,7 +705,6 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
       child: CustomScrollView(
         controller: _scrollCtrl,
         slivers: [
-          // Compteur
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -746,7 +718,6 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
               ),
             ),
           ),
-          // Grille
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
             sliver: SliverGrid(
@@ -775,7 +746,6 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
               ),
             ),
           ),
-          // Loader bas de page
           if (_loadingMore)
             const SliverToBoxAdapter(
               child: Padding(
@@ -806,7 +776,7 @@ class _ListAnnonceScreenState extends State<ListAnnonceScreen> {
   }
 }
 
-// ─── Widgets internes ─────────────────────────────────────────────────────────
+// ─── Widgets internes (identiques à l'original) ────────────────────────────────
 
 class _AdCard extends StatelessWidget {
   final Ad ad;
@@ -840,7 +810,6 @@ class _AdCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Image
             Stack(
               children: [
                 ClipRRect(
@@ -861,7 +830,6 @@ class _AdCard extends StatelessWidget {
                         : _ImagePlaceholder(category: ad.categoryDisplay),
                   ),
                 ),
-                // Badges
                 Positioned(
                   top: 6,
                   left: 6,
@@ -876,7 +844,6 @@ class _AdCard extends StatelessWidget {
                 ),
               ],
             ),
-            // Contenu
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
@@ -907,7 +874,6 @@ class _AdCard extends StatelessWidget {
                         style: TextStyle(fontSize: 10, color: Colors.grey[500]),
                       ),
                     const Spacer(),
-                    // Ville
                     Row(
                       children: [
                         Icon(
@@ -930,7 +896,6 @@ class _AdCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    // Boutons contact
                     Row(
                       children: [
                         _ContactBtn(
@@ -962,59 +927,53 @@ class _AdCard extends StatelessWidget {
 class _ImagePlaceholder extends StatelessWidget {
   final String category;
   const _ImagePlaceholder({required this.category});
-
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: AppTheme.primaryOrange.withOpacity(0.1),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.image_outlined,
-              size: 36,
-              color: AppTheme.primaryOrange.withOpacity(0.4),
+  Widget build(BuildContext context) => Container(
+    color: AppTheme.primaryOrange.withOpacity(0.1),
+    child: Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.image_outlined,
+            size: 36,
+            color: AppTheme.primaryOrange.withOpacity(0.4),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            category,
+            style: TextStyle(
+              fontSize: 10,
+              color: AppTheme.primaryOrange.withOpacity(0.6),
             ),
-            const SizedBox(height: 4),
-            Text(
-              category,
-              style: TextStyle(
-                fontSize: 10,
-                color: AppTheme.primaryOrange.withOpacity(0.6),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
 }
 
 class _Badge extends StatelessWidget {
   final String label;
   final Color color;
   const _Badge({required this.label, required this.color});
-
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(right: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(6),
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.only(right: 4),
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: color,
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Text(
+      label,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 9,
+        fontWeight: FontWeight.bold,
       ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 9,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
+    ),
+  );
 }
 
 class _ContactBtn extends StatelessWidget {
@@ -1022,204 +981,181 @@ class _ContactBtn extends StatelessWidget {
   final Color color;
   final VoidCallback onTap;
   final String tooltip;
-
   const _ContactBtn({
     required this.icon,
     required this.color,
     required this.onTap,
     required this.tooltip,
   });
-
   @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 28,
-          height: 28,
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, color: color, size: 15),
+  Widget build(BuildContext context) => Tooltip(
+    message: tooltip,
+    child: GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 28,
+        height: 28,
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(8),
         ),
+        child: Icon(icon, color: color, size: 15),
       ),
-    );
-  }
+    ),
+  );
 }
 
 class _FilterSection extends StatelessWidget {
   final String title;
   final Widget child;
   const _FilterSection({required this.title, required this.child});
-
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 12),
-        child,
-      ],
-    );
-  }
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        title,
+        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+      ),
+      const SizedBox(height: 12),
+      child,
+    ],
+  );
 }
 
 class _FilterChip extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-
   const _FilterChip({
     required this.label,
     required this.selected,
     required this.onTap,
   });
-
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-        decoration: BoxDecoration(
-          color: selected ? AppTheme.primaryOrange : const Color(0xFFF5F5F5),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: selected ? AppTheme.primaryOrange : Colors.transparent,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: selected ? Colors.white : Colors.black87,
-            fontSize: 13,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-          ),
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+      decoration: BoxDecoration(
+        color: selected ? AppTheme.primaryOrange : const Color(0xFFF5F5F5),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: selected ? AppTheme.primaryOrange : Colors.transparent,
         ),
       ),
-    );
-  }
+      child: Text(
+        label,
+        style: TextStyle(
+          color: selected ? Colors.white : Colors.black87,
+          fontSize: 13,
+          fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+        ),
+      ),
+    ),
+  );
 }
 
 class _ActiveChip extends StatelessWidget {
   final String label;
   final VoidCallback onRemove;
   const _ActiveChip({required this.label, required this.onRemove});
-
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(right: 8),
-      padding: const EdgeInsets.fromLTRB(10, 4, 6, 4),
-      decoration: BoxDecoration(
-        color: AppTheme.primaryOrange.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.primaryOrange.withOpacity(0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(fontSize: 12, color: AppTheme.primaryOrange),
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.only(right: 8),
+    padding: const EdgeInsets.fromLTRB(10, 4, 6, 4),
+    decoration: BoxDecoration(
+      color: AppTheme.primaryOrange.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: AppTheme.primaryOrange.withOpacity(0.3)),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, color: AppTheme.primaryOrange),
+        ),
+        const SizedBox(width: 4),
+        GestureDetector(
+          onTap: onRemove,
+          child: const Icon(
+            Icons.close,
+            size: 14,
+            color: AppTheme.primaryOrange,
           ),
-          const SizedBox(width: 4),
-          GestureDetector(
-            onTap: onRemove,
-            child: const Icon(
-              Icons.close,
-              size: 14,
-              color: AppTheme.primaryOrange,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
 }
 
 class _ErrorWidget extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
   const _ErrorWidget({required this.message, required this.onRetry});
-
   @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.wifi_off_rounded, size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey[600]),
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.wifi_off_rounded, size: 64, color: Colors.grey),
+          const SizedBox(height: 16),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey[600]),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Réessayer'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryOrange,
+              foregroundColor: Colors.white,
             ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Réessayer'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryOrange,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
 }
 
 class _EmptyWidget extends StatelessWidget {
   final bool hasFilters;
   final VoidCallback onClearFilters;
   const _EmptyWidget({required this.hasFilters, required this.onClearFilters});
-
   @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              hasFilters ? '🔍' : '📭',
-              style: const TextStyle(fontSize: 56),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              hasFilters
-                  ? 'Aucune annonce ne correspond à vos critères'
-                  : 'Aucune annonce disponible',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            if (hasFilters) ...[
-              const SizedBox(height: 24),
-              TextButton(
-                onPressed: onClearFilters,
-                child: const Text(
-                  'Effacer les filtres',
-                  style: TextStyle(color: AppTheme.primaryOrange),
-                ),
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(hasFilters ? '🔍' : '📭', style: const TextStyle(fontSize: 56)),
+          const SizedBox(height: 16),
+          Text(
+            hasFilters
+                ? 'Aucune annonce ne correspond à vos critères'
+                : 'Aucune annonce disponible',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+          if (hasFilters) ...[
+            const SizedBox(height: 24),
+            TextButton(
+              onPressed: onClearFilters,
+              child: const Text(
+                'Effacer les filtres',
+                style: TextStyle(color: AppTheme.primaryOrange),
               ),
-            ],
+            ),
           ],
-        ),
+        ],
       ),
-    );
-  }
+    ),
+  );
 }

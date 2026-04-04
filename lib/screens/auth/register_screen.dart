@@ -10,8 +10,14 @@ import '../../widgets/app_widgets.dart';
 class RegisterScreen extends StatefulWidget {
   final VoidCallback? onRegisterSuccess;
   final VoidCallback? onGoToLogin;
+  final VoidCallback? onGoBack;
 
-  const RegisterScreen({super.key, this.onRegisterSuccess, this.onGoToLogin});
+  const RegisterScreen({
+    super.key,
+    this.onRegisterSuccess,
+    this.onGoToLogin,
+    this.onGoBack,
+  });
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -30,11 +36,9 @@ class _RegisterScreenState extends State<RegisterScreen>
   final _passwordConfirmCtrl = TextEditingController();
 
   bool _loading = false;
-  bool _googleLoading = false;
   String _errorMessage = '';
   String _successMessage = '';
   File? _selectedAvatar;
-  String? _avatarPath;
 
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
@@ -88,18 +92,12 @@ class _RegisterScreenState extends State<RegisterScreen>
       }
       setState(() {
         _selectedAvatar = file;
-        _avatarPath = picked.path;
         _errorMessage = '';
       });
     }
   }
 
-  void _removeAvatar() {
-    setState(() {
-      _selectedAvatar = null;
-      _avatarPath = null;
-    });
-  }
+  void _removeAvatar() => setState(() => _selectedAvatar = null);
 
   String? _validateRequired(String? v, {int min = 2}) {
     if (v == null || v.isEmpty) return 'Ce champ est requis';
@@ -109,8 +107,8 @@ class _RegisterScreenState extends State<RegisterScreen>
 
   String? _validateEmail(String? v) {
     if (v == null || v.isEmpty) return 'Ce champ est requis';
-    final emailReg = RegExp(r'^[\w.+-]+@[\w-]+\.[a-zA-Z]{2,}$');
-    if (!emailReg.hasMatch(v)) return 'Adresse email invalide';
+    if (!RegExp(r'^[\w.+-]+@[\w-]+\.[a-zA-Z]{2,}$').hasMatch(v))
+      return 'Adresse email invalide';
     return null;
   }
 
@@ -155,7 +153,6 @@ class _RegisterScreenState extends State<RegisterScreen>
           _loading = false;
           _successMessage = result['message'] ?? 'Compte créé avec succès !';
         });
-
         await Future.delayed(const Duration(seconds: 2));
         widget.onRegisterSuccess?.call();
       }
@@ -169,14 +166,37 @@ class _RegisterScreenState extends State<RegisterScreen>
     }
   }
 
+  void _handleBack() {
+    if (widget.onGoBack != null) {
+      widget.onGoBack!();
+    } else if (widget.onGoToLogin != null) {
+      widget.onGoToLogin!();
+    } else if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AuthBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(
+              Icons.arrow_back_ios_new,
+              color: AppTheme.gray700,
+              size: 20,
+            ),
+            onPressed: _handleBack,
+            tooltip: 'Retour',
+          ),
+        ),
         body: SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
             child: FadeTransition(
               opacity: _fadeAnim,
               child: SlideTransition(
@@ -184,7 +204,6 @@ class _RegisterScreenState extends State<RegisterScreen>
                 child: Column(
                   children: [
                     // ── Header ───────────────────────────────────────────────
-                    const SizedBox(height: 8),
                     Container(
                       width: 64,
                       height: 64,
@@ -220,7 +239,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                       style: TextStyle(fontSize: 14, color: AppTheme.gray500),
                       textAlign: TextAlign.center,
                     ),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 24),
 
                     // ── Formulaire ───────────────────────────────────────────
                     Container(
@@ -241,7 +260,6 @@ class _RegisterScreenState extends State<RegisterScreen>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Messages
                             if (_successMessage.isNotEmpty) ...[
                               AppMessage(
                                 text: _successMessage,
@@ -257,11 +275,10 @@ class _RegisterScreenState extends State<RegisterScreen>
                               const SizedBox(height: 16),
                             ],
 
-                            // ── Avatar ──────────────────────────────────────
+                            // Avatar
                             _buildAvatarSection(),
                             const SizedBox(height: 20),
 
-                            // ── Username ────────────────────────────────────
                             _buildField(
                               label: 'Nom d\'utilisateur *',
                               controller: _usernameCtrl,
@@ -270,8 +287,6 @@ class _RegisterScreenState extends State<RegisterScreen>
                               validator: (v) => _validateRequired(v, min: 3),
                             ),
                             const SizedBox(height: 16),
-
-                            // ── Email ───────────────────────────────────────
                             _buildField(
                               label: 'Adresse email *',
                               controller: _emailCtrl,
@@ -281,8 +296,6 @@ class _RegisterScreenState extends State<RegisterScreen>
                               validator: _validateEmail,
                             ),
                             const SizedBox(height: 16),
-
-                            // ── Téléphone ───────────────────────────────────
                             _buildField(
                               label: 'Téléphone (optionnel)',
                               controller: _phoneCtrl,
@@ -299,8 +312,6 @@ class _RegisterScreenState extends State<RegisterScreen>
                               ),
                             ),
                             const SizedBox(height: 16),
-
-                            // ── Prénom / Nom ────────────────────────────────
                             Row(
                               children: [
                                 Expanded(
@@ -324,8 +335,6 @@ class _RegisterScreenState extends State<RegisterScreen>
                               ],
                             ),
                             const SizedBox(height: 16),
-
-                            // ── Mot de passe ────────────────────────────────
                             _buildLabel('Mot de passe *'),
                             const SizedBox(height: 8),
                             _PasswordFormField(
@@ -335,8 +344,6 @@ class _RegisterScreenState extends State<RegisterScreen>
                               showStrength: true,
                             ),
                             const SizedBox(height: 16),
-
-                            // ── Confirmer mot de passe ─────────────────────
                             _buildLabel('Confirmer le mot de passe *'),
                             const SizedBox(height: 8),
                             _PasswordFormField(
@@ -344,10 +351,9 @@ class _RegisterScreenState extends State<RegisterScreen>
                               placeholder: 'Confirmez votre mot de passe',
                               validator: _validatePasswordConfirm,
                             ),
-
                             const SizedBox(height: 20),
 
-                            // ── CGU ─────────────────────────────────────────
+                            // CGU
                             Container(
                               padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
@@ -387,10 +393,8 @@ class _RegisterScreenState extends State<RegisterScreen>
                                 ),
                               ),
                             ),
-
                             const SizedBox(height: 24),
 
-                            // ── Bouton Submit ───────────────────────────────
                             PrimaryButton(
                               label: 'Créer mon compte',
                               icon: Icons.person_add_outlined,
@@ -401,7 +405,6 @@ class _RegisterScreenState extends State<RegisterScreen>
 
                             const SizedBox(height: 20),
 
-                            // ── Lien Login ──────────────────────────────────
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -452,13 +455,10 @@ class _RegisterScreenState extends State<RegisterScreen>
                           const SizedBox(height: 16),
                           GoogleButton(
                             label: 'Continuer avec Google',
-                            loading: _googleLoading,
-                            onPressed: () {
-                              setState(() {
-                                _errorMessage =
-                                    'L\'inscription Google sera bientôt disponible.';
-                              });
-                            },
+                            onPressed: () => setState(
+                              () => _errorMessage =
+                                  'L\'inscription Google sera bientôt disponible.',
+                            ),
                           ),
                         ],
                       ),
@@ -489,7 +489,7 @@ class _RegisterScreenState extends State<RegisterScreen>
               ),
             ),
             const SizedBox(width: 8),
-            Text(
+            const Text(
               'Max 1Mo',
               style: TextStyle(fontSize: 12, color: AppTheme.gray400),
             ),
@@ -498,7 +498,6 @@ class _RegisterScreenState extends State<RegisterScreen>
         const SizedBox(height: 12),
         Row(
           children: [
-            // Avatar preview
             Stack(
               children: [
                 CircleAvatar(
@@ -539,7 +538,6 @@ class _RegisterScreenState extends State<RegisterScreen>
               ],
             ),
             const SizedBox(width: 16),
-            // Bouton upload
             GestureDetector(
               onTap: _pickAvatar,
               child: Container(
@@ -551,8 +549,8 @@ class _RegisterScreenState extends State<RegisterScreen>
                   color: AppTheme.primaryOrange,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Row(
-                  children: const [
+                child: const Row(
+                  children: [
                     Icon(Icons.upload_outlined, color: Colors.white, size: 18),
                     SizedBox(width: 8),
                     Text(
@@ -577,16 +575,14 @@ class _RegisterScreenState extends State<RegisterScreen>
     );
   }
 
-  Widget _buildLabel(String text) {
-    return Text(
-      text,
-      style: const TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-        color: AppTheme.gray700,
-      ),
-    );
-  }
+  Widget _buildLabel(String text) => Text(
+    text,
+    style: const TextStyle(
+      fontSize: 14,
+      fontWeight: FontWeight.w600,
+      color: AppTheme.gray700,
+    ),
+  );
 
   Widget _buildField({
     required String label,
@@ -626,7 +622,7 @@ class _RegisterScreenState extends State<RegisterScreen>
   }
 }
 
-// ─── PasswordFormField avec force ─────────────────────────────────────────────
+// ─── PasswordFormField avec indicateur de force ───────────────────────────────
 
 class _PasswordFormField extends StatefulWidget {
   final TextEditingController controller;

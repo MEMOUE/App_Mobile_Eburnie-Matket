@@ -17,7 +17,6 @@ import '../screens/annonces/my_ds_screen.dart';
 import '../screens/premium/premium_screen.dart';
 
 class AppRouter {
-  // Routes publiques (accessibles sans connexion)
   static const _publicPaths = [
     '/accueil',
     '/login',
@@ -78,6 +77,9 @@ class AppRouter {
             onLoginSuccess: () => context.go('/dashboard'),
             onGoToRegister: () => context.go('/register'),
             onGoToForgotPassword: () => context.go('/forgot-password'),
+            // Retour vers l'accueil si on ne peut pas pop
+            onGoBack: () =>
+                context.canPop() ? context.pop() : context.go('/accueil'),
           ),
         ),
       ),
@@ -88,6 +90,9 @@ class AppRouter {
           RegisterScreen(
             onRegisterSuccess: () => context.go('/login'),
             onGoToLogin: () => context.go('/login'),
+            // Retour vers login ou accueil
+            onGoBack: () =>
+                context.canPop() ? context.pop() : context.go('/accueil'),
           ),
         ),
       ),
@@ -197,6 +202,8 @@ class AppRouter {
               initialCity: city,
               initialSearch: search,
               onGoToLogin: () => context.go('/login'),
+              onGoBack: () =>
+                  context.canPop() ? context.pop() : context.go('/accueil'),
             ),
           );
         },
@@ -227,6 +234,8 @@ class AppRouter {
             ListAnnonceScreen(
               initialSearch: q,
               onGoToLogin: () => context.go('/login'),
+              onGoBack: () =>
+                  context.canPop() ? context.pop() : context.go('/accueil'),
             ),
           );
         },
@@ -317,14 +326,20 @@ class AppRouter {
   }
 }
 
-// ── Placeholder ───────────────────────────────────────────────────────────────
-
 class _ChangePasswordPlaceholder extends StatelessWidget {
   const _ChangePasswordPlaceholder();
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Changer le mot de passe')),
+      appBar: AppBar(
+        title: const Text('Changer le mot de passe'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new),
+          onPressed: () => Navigator.of(context).canPop()
+              ? Navigator.of(context).pop()
+              : null,
+        ),
+      ),
       body: const Center(child: Text('🔒 À implémenter')),
     );
   }

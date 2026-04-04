@@ -1,6 +1,7 @@
 // lib/screens/annonces/detail_annonce_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../models/annonce.dart';
 import '../../services/annonce_service.dart';
@@ -63,6 +64,16 @@ class _DetailAnnonceScreenState extends State<DetailAnnonceScreen> {
     }
   }
 
+  // ─── Navigation retour (GoRouter-safe) ────────────────────────────────────
+
+  void _goBack() {
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/accueil');
+    }
+  }
+
   // ─── Contact ───────────────────────────────────────────────────────────────
 
   Future<void> _launchWhatsApp() async {
@@ -107,56 +118,68 @@ class _DetailAnnonceScreenState extends State<DetailAnnonceScreen> {
   }
 
   void _showSnack(String msg) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   // ─── Build ─────────────────────────────────────────────────────────────────
 
-  Widget _buildLoading() {
-    return const Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CircularProgressIndicator(color: AppTheme.primaryOrange),
-          SizedBox(height: 16),
-          Text(
-            'Chargement de l\'annonce...',
-            style: TextStyle(color: Colors.grey),
-          ),
-        ],
-      ),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F8F8),
+      body: _loading
+          ? _buildLoading()
+          : _error != null
+          ? _buildError()
+          : _buildContent(),
+      bottomNavigationBar: (!_loading && _error == null && _ad != null)
+          ? _buildBottomContactBar()
+          : null,
     );
   }
 
-  Widget _buildError() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
-            Text(
-              _error!,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: _loadAd,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Réessayer'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryOrange,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ],
+  Widget _buildLoading() => const Center(
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        CircularProgressIndicator(color: AppTheme.primaryOrange),
+        SizedBox(height: 16),
+        Text(
+          'Chargement de l\'annonce...',
+          style: TextStyle(color: Colors.grey),
         ),
+      ],
+    ),
+  );
+
+  Widget _buildError() => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.error_outline, size: 64, color: Colors.grey),
+          const SizedBox(height: 16),
+          Text(
+            _error!,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey[600]),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: _loadAd,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Réessayer'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryOrange,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
 
   Widget _buildContent() {
     final ad = _ad!;
@@ -176,27 +199,34 @@ class _DetailAnnonceScreenState extends State<DetailAnnonceScreen> {
 
     return CustomScrollView(
       slivers: [
-        // ── App Bar + Galerie ──────────────────────────────────────────────
+        // ── SliverAppBar + galerie ─────────────────────────────────────────
         SliverAppBar(
           expandedHeight: 300,
           pinned: true,
           backgroundColor: Colors.black,
+          // ★ FIX : automaticallyImplyLeading: false + leading personnalisé
+          //   qui utilise _goBack() (GoRouter) au lieu de Navigator.pop()
+          automaticallyImplyLeading: false,
           leading: GestureDetector(
-            onTap: () => Navigator.pop(context),
+            onTap: _goBack,
             child: Container(
               margin: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.4),
+                color: Colors.black.withOpacity(0.45),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.arrow_back, color: Colors.white),
+              child: const Icon(
+                Icons.arrow_back_ios_new_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
             ),
           ),
           actions: [
             Container(
               margin: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.4),
+                color: Colors.black.withOpacity(0.45),
                 shape: BoxShape.circle,
               ),
               child: IconButton(
@@ -215,7 +245,6 @@ class _DetailAnnonceScreenState extends State<DetailAnnonceScreen> {
             background: Stack(
               fit: StackFit.expand,
               children: [
-                // Galerie
                 allImages.isNotEmpty
                     ? PageView.builder(
                         controller: _pageCtrl,
@@ -255,7 +284,7 @@ class _DetailAnnonceScreenState extends State<DetailAnnonceScreen> {
                       ),
                     ),
                   ),
-                // Compteur images
+                // Compteur
                 if (allImages.length > 1)
                   Positioned(
                     top: 56,
@@ -288,14 +317,13 @@ class _DetailAnnonceScreenState extends State<DetailAnnonceScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Bloc principal ──────────────────────────────────────────
+              // Bloc principal
               Container(
                 color: Colors.white,
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Badges
                     Row(
                       children: [
                         if (ad.isFeatured)
@@ -325,7 +353,6 @@ class _DetailAnnonceScreenState extends State<DetailAnnonceScreen> {
                           ),
                         ),
                         const Spacer(),
-                        // Vues
                         Icon(
                           Icons.remove_red_eye_outlined,
                           size: 14,
@@ -342,7 +369,6 @@ class _DetailAnnonceScreenState extends State<DetailAnnonceScreen> {
                       ],
                     ),
                     const SizedBox(height: 10),
-                    // Titre
                     Text(
                       ad.title,
                       style: const TextStyle(
@@ -351,7 +377,6 @@ class _DetailAnnonceScreenState extends State<DetailAnnonceScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    // Prix
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
@@ -387,7 +412,6 @@ class _DetailAnnonceScreenState extends State<DetailAnnonceScreen> {
                       ],
                     ),
                     const SizedBox(height: 10),
-                    // Localisation & date
                     Row(
                       children: [
                         Icon(
@@ -448,7 +472,7 @@ class _DetailAnnonceScreenState extends State<DetailAnnonceScreen> {
 
               const SizedBox(height: 8),
 
-              // ── Description ─────────────────────────────────────────────
+              // Description
               if (ad.description != null && ad.description!.isNotEmpty) ...[
                 Container(
                   color: Colors.white,
@@ -510,12 +534,12 @@ class _DetailAnnonceScreenState extends State<DetailAnnonceScreen> {
                 const SizedBox(height: 8),
               ],
 
-              // ── Vendeur ─────────────────────────────────────────────────
+              // Vendeur
               if (ad.user != null) _SellerCard(user: ad.user!),
 
               const SizedBox(height: 8),
 
-              // ── Annonces similaires ──────────────────────────────────────
+              // Annonces similaires
               if (ad.relatedAds.isNotEmpty) ...[
                 Container(
                   color: Colors.white,
@@ -536,11 +560,17 @@ class _DetailAnnonceScreenState extends State<DetailAnnonceScreen> {
                         child: ListView.builder(
                           scrollDirection: Axis.horizontal,
                           itemCount: ad.relatedAds.length,
-                          itemBuilder: (_, i) => _RelatedAdCard(
-                            ad: ad.relatedAds[i] is Ad
+                          itemBuilder: (_, i) {
+                            final related = ad.relatedAds[i] is Ad
                                 ? ad.relatedAds[i] as Ad
-                                : Ad.fromJson(ad.relatedAds[i]),
-                          ),
+                                : Ad.fromJson(ad.relatedAds[i]);
+                            return _RelatedAdCard(
+                              ad: related,
+                              // ★ FIX : utilise GoRouter push
+                              onTap: () =>
+                                  context.push('/annonces/${related.id}'),
+                            );
+                          },
                         ),
                       ),
                     ],
@@ -549,7 +579,6 @@ class _DetailAnnonceScreenState extends State<DetailAnnonceScreen> {
                 const SizedBox(height: 8),
               ],
 
-              // Espace pour la barre du bas
               const SizedBox(height: 100),
             ],
           ),
@@ -558,98 +587,74 @@ class _DetailAnnonceScreenState extends State<DetailAnnonceScreen> {
     );
   }
 
-  // ── Barre de contact fixe en bas ───────────────────────────────────────────
-  // Utilisé dans un Stack via un Scaffold body avec BottomNavigationBar
-  // → ici on le présente directement dans le build via une BottomAppBar
-
-  Widget _buildBottomContactBar() {
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        12,
-        16,
-        MediaQuery.of(context).padding.bottom + 12,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 16,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // WhatsApp
-          Expanded(
-            flex: 2,
-            child: ElevatedButton.icon(
-              onPressed: _ad?.contactWhatsApp != null ? _launchWhatsApp : null,
-              icon: const Icon(Icons.chat, size: 18),
-              label: const Text('WhatsApp'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF25D366),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+  Widget _buildBottomContactBar() => Container(
+    padding: EdgeInsets.fromLTRB(
+      16,
+      12,
+      16,
+      MediaQuery.of(context).padding.bottom + 12,
+    ),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.08),
+          blurRadius: 16,
+          offset: const Offset(0, -4),
+        ),
+      ],
+    ),
+    child: Row(
+      children: [
+        Expanded(
+          flex: 2,
+          child: ElevatedButton.icon(
+            onPressed: _ad?.contactWhatsApp != null ? _launchWhatsApp : null,
+            icon: const Icon(Icons.chat, size: 18),
+            label: const Text('WhatsApp'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF25D366),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
           ),
-          const SizedBox(width: 10),
-          // Appel
-          Expanded(
-            child: ElevatedButton(
-              onPressed: _ad?.contactPhone != null ? _launchCall : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: ElevatedButton(
+            onPressed: _ad?.contactPhone != null ? _launchCall : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.phone, size: 20),
             ),
+            child: const Icon(Icons.phone, size: 20),
           ),
-          const SizedBox(width: 10),
-          // SMS
-          Expanded(
-            child: ElevatedButton(
-              onPressed: _ad?.contactPhone != null ? _launchSms : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF8B5CF6),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: ElevatedButton(
+            onPressed: _ad?.contactPhone != null ? _launchSms : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF8B5CF6),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.sms_outlined, size: 20),
             ),
+            child: const Icon(Icons.sms_outlined, size: 20),
           ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F8F8),
-      body: _loading
-          ? _buildLoading()
-          : _error != null
-          ? _buildError()
-          : _buildContent(),
-      bottomNavigationBar: (!_loading && _error == null && _ad != null)
-          ? _buildBottomContactBar()
-          : null,
-    );
-  }
+        ),
+      ],
+    ),
+  );
 }
 
 // ─── Widgets internes ──────────────────────────────────────────────────────────
@@ -659,28 +664,26 @@ class _GalleryPlaceholder extends StatelessWidget {
   const _GalleryPlaceholder({required this.category});
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFFE8E8E8),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.image_not_supported_outlined,
-              size: 64,
-              color: Colors.grey[400],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              category,
-              style: TextStyle(color: Colors.grey[500], fontSize: 13),
-            ),
-          ],
-        ),
+  Widget build(BuildContext context) => Container(
+    color: const Color(0xFFE8E8E8),
+    child: Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.image_not_supported_outlined,
+            size: 64,
+            color: Colors.grey[400],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            category,
+            style: TextStyle(color: Colors.grey[500], fontSize: 13),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
 }
 
 class _Badge extends StatelessWidget {
@@ -689,24 +692,22 @@ class _Badge extends StatelessWidget {
   const _Badge({required this.label, required this.color});
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(right: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(8),
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.only(right: 6),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: color,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Text(
+      label,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 10,
+        fontWeight: FontWeight.bold,
       ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
+    ),
+  );
 }
 
 class _SellerCard extends StatelessWidget {
@@ -714,200 +715,192 @@ class _SellerCard extends StatelessWidget {
   const _SellerCard({required this.user});
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.all(16),
+  Widget build(BuildContext context) => Container(
+    color: Colors.white,
+    padding: const EdgeInsets.all(16),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Vendeur',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            CircleAvatar(
+              radius: 28,
+              backgroundImage: user.avatarUrl != null
+                  ? NetworkImage(user.avatarUrl!)
+                  : null,
+              backgroundColor: AppTheme.primaryOrange.withOpacity(0.15),
+              child: user.avatarUrl == null
+                  ? Text(
+                      user.fullName.isNotEmpty
+                          ? user.fullName[0].toUpperCase()
+                          : '?',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.primaryOrange,
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          user.fullName,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      if (user.isPremium) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            '⭐ PREMIUM',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${user.totalAds} annonce${user.totalAds > 1 ? 's' : ''}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                  if (user.averageRating > 0)
+                    Row(
+                      children: [
+                        ...List.generate(
+                          5,
+                          (i) => Icon(
+                            i < user.averageRating.round()
+                                ? Icons.star_rounded
+                                : Icons.star_outline_rounded,
+                            size: 14,
+                            color: i < user.averageRating.round()
+                                ? const Color(0xFFFFD700)
+                                : Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          user.averageRating.toStringAsFixed(1),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+
+// ★ FIX : onTap en paramètre → n'utilise plus Navigator.push directement
+class _RelatedAdCard extends StatelessWidget {
+  final Ad ad;
+  final VoidCallback onTap;
+  const _RelatedAdCard({required this.ad, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      width: 140,
+      margin: const EdgeInsets.only(right: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F5F5),
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Vendeur',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              // Avatar
-              CircleAvatar(
-                radius: 28,
-                backgroundImage: user.avatarUrl != null
-                    ? NetworkImage(user.avatarUrl!)
-                    : null,
-                backgroundColor: AppTheme.primaryOrange.withOpacity(0.15),
-                child: user.avatarUrl == null
-                    ? Text(
-                        user.fullName.isNotEmpty
-                            ? user.fullName[0].toUpperCase()
-                            : '?',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.primaryOrange,
-                        ),
-                      )
-                    : null,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            user.fullName,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        if (user.isPremium) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
-                              ),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Text(
-                              '⭐ PREMIUM',
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${user.totalAds} annonce${user.totalAds > 1 ? 's' : ''}',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                    ),
-                    if (user.averageRating > 0)
-                      Row(
-                        children: [
-                          ...List.generate(
-                            5,
-                            (i) => Icon(
-                              i < user.averageRating.round()
-                                  ? Icons.star_rounded
-                                  : Icons.star_outline_rounded,
-                              size: 14,
-                              color: i < user.averageRating.round()
-                                  ? const Color(0xFFFFD700)
-                                  : Colors.grey,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            user.averageRating.toStringAsFixed(1),
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                        ],
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RelatedAdCard extends StatelessWidget {
-  final Ad ad;
-  const _RelatedAdCard({required this.ad});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => DetailAnnonceScreen(adId: ad.id)),
-      ),
-      child: Container(
-        width: 140,
-        margin: const EdgeInsets.only(right: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF5F5F5),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(12),
-              ),
-              child: SizedBox(
-                height: 110,
-                width: 140,
-                child: ad.mainImageUrl != null && ad.mainImageUrl!.isNotEmpty
-                    ? Image.network(
-                        ad.mainImageUrl!,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          color: Colors.grey[200],
-                          child: const Icon(
-                            Icons.image_outlined,
-                            color: Colors.grey,
-                          ),
-                        ),
-                      )
-                    : Container(
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+            child: SizedBox(
+              height: 110,
+              width: 140,
+              child: ad.mainImageUrl != null && ad.mainImageUrl!.isNotEmpty
+                  ? Image.network(
+                      ad.mainImageUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
                         color: Colors.grey[200],
                         child: const Icon(
                           Icons.image_outlined,
                           color: Colors.grey,
                         ),
                       ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    ad.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                    )
+                  : Container(
+                      color: Colors.grey[200],
+                      child: const Icon(
+                        Icons.image_outlined,
+                        color: Colors.grey,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    ad.formattedPrice,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.primaryOrange,
-                    ),
-                  ),
-                ],
-              ),
             ),
-          ],
-        ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  ad.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  ad.formattedPrice,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.primaryOrange,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
 }

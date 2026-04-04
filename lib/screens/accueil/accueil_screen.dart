@@ -1,5 +1,8 @@
 // lib/screens/accueil/accueil_screen.dart
-// Version avec données RÉELLES de l'API
+//
+// Les annonces en vedette et urgentes sont rafraîchies toutes les 10 secondes
+// en parallèle avec le backend (même seed temporel → même lot).
+// Un AnimatedSwitcher assure une transition fluide entre les lots.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -11,7 +14,7 @@ import '../../models/user.dart';
 import '../../services/auth_service.dart';
 import '../../services/annonce_service.dart';
 
-// ── Catégories statiques (icônes/couleurs locales) ──────────────────────────
+// ── Catégories statiques (icônes/couleurs locales) ───────────────────────────
 
 class _CategoryItem {
   final String icon;
@@ -26,7 +29,7 @@ class _CategoryItem {
   });
 }
 
-// ── Écran Accueil ────────────────────────────────────────────────────────────
+// ── Écran Accueil ─────────────────────────────────────────────────────────────
 
 class AccueilScreen extends StatefulWidget {
   final VoidCallback? onGoToDashboard;
@@ -61,13 +64,16 @@ class _AccueilScreenState extends State<AccueilScreen>
   bool _avatarError = false;
   String? _errorMessage;
 
+  // Données initiales (chargement complet)
   List<Ad> _featuredAds = [];
   List<Ad> _urgentAds = [];
   List<Ad> _recentAds = [];
 
-  late PageController _bannerPageCtrl;
-  int _bannerPage = 0;
-  Timer? _bannerTimer;
+  // ── Rotation toutes les 10 s ──────────────────────────────────────────────
+  // On conserve une "clé" d'animation pour AnimatedSwitcher
+  int _rotationKey = 0;
+  Timer? _rotationTimer;
+  static const _rotationInterval = Duration(seconds: 10);
 
   late AnimationController _fadeCtrl;
   late Animation<double> _fadeAnim;
@@ -130,7 +136,7 @@ class _AccueilScreenState extends State<AccueilScreen>
     _CategoryItem(
       icon: '🐾',
       name: 'Animaux',
-      value: 'animaux',
+      value: 'animaux_produits_animaliers',
       color: Color(0xFFF59E0B),
     ),
   ];
@@ -138,7 +144,6 @@ class _AccueilScreenState extends State<AccueilScreen>
   @override
   void initState() {
     super.initState();
-    _bannerPageCtrl = PageController();
     _fadeCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
@@ -153,13 +158,13 @@ class _AccueilScreenState extends State<AccueilScreen>
   @override
   void dispose() {
     _scrollCtrl.dispose();
-    _bannerPageCtrl.dispose();
-    _bannerTimer?.cancel();
+    _rotationTimer?.cancel();
     _fadeCtrl.dispose();
     super.dispose();
   }
 
-  // ── Chargement des données réelles ─────────────────────────────────────────
+  // ─── Chargement initial complet ────────────────────────────────────────────
+
   Future<void> _loadData() async {
     setState(() {
       _loading = true;
@@ -177,7 +182,7 @@ class _AccueilScreenState extends State<AccueilScreen>
           _loading = false;
         });
         _fadeCtrl.forward(from: 0);
-        _startBannerTimer();
+        _startRotationTimer();
       }
     } catch (e) {
       if (mounted) {
@@ -189,29 +194,44 @@ class _AccueilScreenState extends State<AccueilScreen>
     }
   }
 
-  void _startBannerTimer() {
-    _bannerTimer?.cancel();
-    if (_featuredAds.length > 1) {
-      _bannerTimer = Timer.periodic(const Duration(seconds: 4), (_) {
-        if (_bannerPageCtrl.hasClients && mounted) {
-          final next = (_bannerPage + 1) % _featuredAds.length;
-          _bannerPageCtrl.animateToPage(
-            next,
-            duration: const Duration(milliseconds: 500),
-            curve: Curves.easeInOut,
-          );
-        }
-      });
+  // ─── Timer de rotation toutes les 10 s ────────────────────────────────────
+
+  void _startRotationTimer() {
+    _rotationTimer?.cancel();
+    _rotationTimer = Timer.periodic(_rotationInterval, (_) {
+      _fetchRotatedAds();
+    });
+  }
+
+  /// Appelle home-data et ne met à jour QUE les sections rotatives
+  /// (featured + urgent). Les annonces récentes ne changent pas.
+  Future<void> _fetchRotatedAds() async {
+    if (!mounted) return;
+    try {
+      final homeData = await AnnonceService().getHomeData();
+      if (mounted) {
+        setState(() {
+          _featuredAds = homeData.featuredAds;
+          _urgentAds = homeData.urgentAds;
+          // Incrémenter la clé pour déclencher AnimatedSwitcher
+          _rotationKey++;
+        });
+      }
+    } catch (_) {
+      // Silencieux : on conserve les données précédentes
     }
   }
 
+  // ─── Refresh manuel (pull-to-refresh) ─────────────────────────────────────
+
   Future<void> _onRefresh() async {
+    _rotationTimer?.cancel();
     _fadeCtrl.reset();
-    _bannerTimer?.cancel();
     await _loadData();
   }
 
-  // ── Contact ────────────────────────────────────────────────────────────────
+  // ─── Contacts ─────────────────────────────────────────────────────────────
+
   Future<void> _launchWhatsApp(Ad ad) async {
     final phone = ad.contactWhatsApp;
     if (phone == null) return;
@@ -221,9 +241,8 @@ class _AccueilScreenState extends State<AccueilScreen>
       'Bonjour,\n\nJe suis intéressé(e) par votre annonce "${ad.title}".\nPrix: ${ad.formattedPrice}\n\nVu sur Éburnie-market.com',
     );
     final uri = Uri.parse('https://wa.me/$intl?text=$msg');
-    if (await canLaunchUrl(uri)) {
+    if (await canLaunchUrl(uri))
       await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
   }
 
   Future<void> _launchCall(Ad ad) async {
@@ -243,7 +262,8 @@ class _AccueilScreenState extends State<AccueilScreen>
     if (await canLaunchUrl(uri)) await launchUrl(uri);
   }
 
-  // ── Build principal ────────────────────────────────────────────────────────
+  // ─── Build ─────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -273,12 +293,14 @@ class _AccueilScreenState extends State<AccueilScreen>
                   ),
                 )
               else ...[
-                // SliverToBoxAdapter(child: _buildFeaturedSection()),
-                // if (_urgentAds.isNotEmpty)
-                //   SliverToBoxAdapter(child: _buildUrgentSection()),
+                // ── Section vedette avec AnimatedSwitcher ────────────────────
+                if (_featuredAds.isNotEmpty)
+                  SliverToBoxAdapter(child: _buildFeaturedSection()),
+
+                // ── Section récentes (fixes) ──────────────────────────────────
                 if (_recentAds.isNotEmpty)
-                  SliverToBoxAdapter(child: _buildRecentSection()),
-                SliverToBoxAdapter(child: _buildCategoriesSection()),
+                  // SliverToBoxAdapter(child: _buildRecentSection()),
+                  SliverToBoxAdapter(child: _buildCategoriesSection()),
                 SliverToBoxAdapter(child: _buildFeaturesSection()),
                 if (_user == null)
                   SliverToBoxAdapter(child: _buildRegisterCTA()),
@@ -293,6 +315,7 @@ class _AccueilScreenState extends State<AccueilScreen>
   }
 
   // ── Top Bar ────────────────────────────────────────────────────────────────
+
   Widget _buildTopBar() {
     return SliverAppBar(
       floating: true,
@@ -371,6 +394,7 @@ class _AccueilScreenState extends State<AccueilScreen>
   }
 
   // ── Barre de recherche ─────────────────────────────────────────────────────
+
   Widget _buildSearchBar() {
     return Container(
       color: const Color(0xFFFFF7ED),
@@ -392,8 +416,8 @@ class _AccueilScreenState extends State<AccueilScreen>
               ),
             ],
           ),
-          child: Row(
-            children: const [
+          child: const Row(
+            children: [
               Icon(Icons.search_rounded, color: AppTheme.gray400, size: 22),
               SizedBox(width: 10),
               Expanded(
@@ -411,6 +435,7 @@ class _AccueilScreenState extends State<AccueilScreen>
   }
 
   // ── CTA Publier ────────────────────────────────────────────────────────────
+
   Widget _buildPublishCTA() {
     return Container(
       color: const Color(0xFFFFF7ED),
@@ -434,9 +459,9 @@ class _AccueilScreenState extends State<AccueilScreen>
               ),
             ],
           ),
-          child: Row(
+          child: const Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: const [
+            children: [
               Icon(
                 Icons.add_circle_outline_rounded,
                 color: Colors.white,
@@ -458,127 +483,9 @@ class _AccueilScreenState extends State<AccueilScreen>
     );
   }
 
-  // ── Section Vedettes ───────────────────────────────────────────────────────
-  // Widget _buildFeaturedSection() {
-  //   if (_featuredAds.isEmpty) return const SizedBox.shrink();
-  //   return FadeTransition(
-  //     opacity: _fadeAnim,
-  //     child: Column(
-  //       crossAxisAlignment: CrossAxisAlignment.start,
-  //       children: [
-  //         _SectionHeader(
-  //           title: 'Annonces en Vedette',
-  //           subtitle: 'Meilleures offres du moment',
-  //           onSeeAll: () => widget.onGoToCategory?.call(''),
-  //         ),
-  //         const SizedBox(height: 14),
-  //         // Carrousel bannière
-  //         SizedBox(
-  //           height: 220,
-  //           child: PageView.builder(
-  //             controller: _bannerPageCtrl,
-  //             onPageChanged: (p) => setState(() => _bannerPage = p),
-  //             itemCount: _featuredAds.length,
-  //             itemBuilder: (_, i) => _BannerCard(
-  //               ad: _featuredAds[i],
-  //               onTap: () => widget.onGoToAdDetail?.call(_featuredAds[i].id),
-  //               onWhatsApp: () => _launchWhatsApp(_featuredAds[i]),
-  //               onCall: () => _launchCall(_featuredAds[i]),
-  //               onSms: () => _launchSms(_featuredAds[i]),
-  //             ),
-  //           ),
-  //         ),
-  //         const SizedBox(height: 10),
-  //         // Indicateurs de page
-  //         Row(
-  //           mainAxisAlignment: MainAxisAlignment.center,
-  //           children: List.generate(
-  //             _featuredAds.length,
-  //             (i) => AnimatedContainer(
-  //               duration: const Duration(milliseconds: 300),
-  //               width: i == _bannerPage ? 20 : 6,
-  //               height: 6,
-  //               margin: const EdgeInsets.symmetric(horizontal: 3),
-  //               decoration: BoxDecoration(
-  //                 color: i == _bannerPage
-  //                     ? AppTheme.primaryOrange
-  //                     : AppTheme.gray200,
-  //                 borderRadius: BorderRadius.circular(3),
-  //               ),
-  //             ),
-  //           ),
-  //         ),
-  //         const SizedBox(height: 16),
-  //         // Grille 2 colonnes
-  //         Padding(
-  //           padding: const EdgeInsets.symmetric(horizontal: 16),
-  //           child: GridView.builder(
-  //             shrinkWrap: true,
-  //             physics: const NeverScrollableScrollPhysics(),
-  //             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-  //               crossAxisCount: 2,
-  //               childAspectRatio: 0.72,
-  //               crossAxisSpacing: 12,
-  //               mainAxisSpacing: 12,
-  //             ),
-  //             itemCount: _featuredAds.length.clamp(0, 6),
-  //             itemBuilder: (_, i) => _AdGridCard(
-  //               ad: _featuredAds[i],
-  //               onTap: () => widget.onGoToAdDetail?.call(_featuredAds[i].id),
-  //               onWhatsApp: () => _launchWhatsApp(_featuredAds[i]),
-  //               onCall: () => _launchCall(_featuredAds[i]),
-  //               onSms: () => _launchSms(_featuredAds[i]),
-  //             ),
-  //           ),
-  //         ),
-  //         const SizedBox(height: 8),
-  //       ],
-  //     ),
-  //   );
-  // }
+  // ── Section Vedette (avec AnimatedSwitcher pour la rotation) ───────────────
 
-  // ── Section Urgentes ───────────────────────────────────────────────────────
-  // Widget _buildUrgentSection() {
-  //   return FadeTransition(
-  //     opacity: _fadeAnim,
-  //     child: Container(
-  //       color: const Color(0xFFFFF5F5),
-  //       padding: const EdgeInsets.only(top: 24, bottom: 8),
-  //       child: Column(
-  //         crossAxisAlignment: CrossAxisAlignment.start,
-  //         children: [
-  //           _SectionHeader(
-  //             title: '🔥 Annonces Urgentes',
-  //             subtitle: 'Ne ratez pas ces opportunités !',
-  //             titleColor: AppTheme.errorRed,
-  //             onSeeAll: () => widget.onGoToCategory?.call(''),
-  //           ),
-  //           const SizedBox(height: 14),
-  //           SizedBox(
-  //             height: 230,
-  //             child: ListView.separated(
-  //               scrollDirection: Axis.horizontal,
-  //               padding: const EdgeInsets.symmetric(horizontal: 16),
-  //               itemCount: _urgentAds.length,
-  //               separatorBuilder: (_, __) => const SizedBox(width: 12),
-  //               itemBuilder: (_, i) => _UrgentCard(
-  //                 ad: _urgentAds[i],
-  //                 onTap: () => widget.onGoToAdDetail?.call(_urgentAds[i].id),
-  //                 onWhatsApp: () => _launchWhatsApp(_urgentAds[i]),
-  //                 onCall: () => _launchCall(_urgentAds[i]),
-  //                 onSms: () => _launchSms(_urgentAds[i]),
-  //               ),
-  //             ),
-  //           ),
-  //           const SizedBox(height: 16),
-  //         ],
-  //       ),
-  //     ),
-  //   );
-  // }
-
-  // ── Section Récentes ───────────────────────────────────────────────────────
-  Widget _buildRecentSection() {
+  Widget _buildFeaturedSection() {
     return FadeTransition(
       opacity: _fadeAnim,
       child: Padding(
@@ -587,31 +494,52 @@ class _AccueilScreenState extends State<AccueilScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _SectionHeader(
-              title: 'Annonces Récentes',
-              subtitle: 'Publiées ces dernières heures',
+              title: 'Annonces en Vedette',
+              subtitle: 'Sélection actualisée toutes les 10 secondes',
               onSeeAll: () => widget.onGoToCategory?.call(''),
             ),
             const SizedBox(height: 14),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  childAspectRatio: 0.72,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                ),
-                itemCount: _recentAds.length.clamp(0, 6),
-                itemBuilder: (_, i) => _AdGridCard(
-                  ad: _recentAds[i],
-                  onTap: () => widget.onGoToAdDetail?.call(_recentAds[i].id),
-                  onWhatsApp: () => _launchWhatsApp(_recentAds[i]),
-                  onCall: () => _launchCall(_recentAds[i]),
-                  onSms: () => _launchSms(_recentAds[i]),
+            // AnimatedSwitcher : fondu entre l'ancien et le nouveau lot
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 600),
+              switchInCurve: Curves.easeIn,
+              switchOutCurve: Curves.easeOut,
+              transitionBuilder: (child, animation) =>
+                  FadeTransition(opacity: animation, child: child),
+              child: KeyedSubtree(
+                // La clé change à chaque rotation → AnimatedSwitcher se déclenche
+                key: ValueKey('featured_$_rotationKey'),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          childAspectRatio: 0.72,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                        ),
+                    itemCount: _featuredAds.length.clamp(0, 6),
+                    itemBuilder: (_, i) => _AdGridCard(
+                      ad: _featuredAds[i],
+                      onTap: () =>
+                          widget.onGoToAdDetail?.call(_featuredAds[i].id),
+                      onWhatsApp: () => _launchWhatsApp(_featuredAds[i]),
+                      onCall: () => _launchCall(_featuredAds[i]),
+                      onSms: () => _launchSms(_featuredAds[i]),
+                    ),
+                  ),
                 ),
               ),
+            ),
+
+            // Indicateur de rotation (barre de progression animée)
+            const SizedBox(height: 12),
+            _RotationIndicator(
+              interval: _rotationInterval,
+              key: ValueKey('ri_$_rotationKey'),
             ),
           ],
         ),
@@ -619,7 +547,51 @@ class _AccueilScreenState extends State<AccueilScreen>
     );
   }
 
+  // // ── Section Récentes (fixes) ───────────────────────────────────────────────
+
+  // Widget _buildRecentSection() {
+  //   return FadeTransition(
+  //     opacity: _fadeAnim,
+  //     child: Padding(
+  //       padding: const EdgeInsets.only(top: 24),
+  //       child: Column(
+  //         crossAxisAlignment: CrossAxisAlignment.start,
+  //         children: [
+  //           _SectionHeader(
+  //             title: 'Annonces Récentes',
+  //             subtitle: 'Publiées ces dernières heures',
+  //             onSeeAll: () => widget.onGoToCategory?.call(''),
+  //           ),
+  //           const SizedBox(height: 14),
+  //           Padding(
+  //             padding: const EdgeInsets.symmetric(horizontal: 16),
+  //             child: GridView.builder(
+  //               shrinkWrap: true,
+  //               physics: const NeverScrollableScrollPhysics(),
+  //               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+  //                 crossAxisCount: 2,
+  //                 childAspectRatio: 0.72,
+  //                 crossAxisSpacing: 12,
+  //                 mainAxisSpacing: 12,
+  //               ),
+  //               itemCount: _recentAds.length.clamp(0, 6),
+  //               itemBuilder: (_, i) => _AdGridCard(
+  //                 ad: _recentAds[i],
+  //                 onTap: () => widget.onGoToAdDetail?.call(_recentAds[i].id),
+  //                 onWhatsApp: () => _launchWhatsApp(_recentAds[i]),
+  //                 onCall: () => _launchCall(_recentAds[i]),
+  //                 onSms: () => _launchSms(_recentAds[i]),
+  //               ),
+  //             ),
+  //           ),
+  //         ],
+  //       ),
+  //     ),
+  //   );
+  // }
+
   // ── Section Catégories ─────────────────────────────────────────────────────
+
   Widget _buildCategoriesSection() {
     return FadeTransition(
       opacity: _fadeAnim,
@@ -628,7 +600,7 @@ class _AccueilScreenState extends State<AccueilScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _SectionHeader(
+            const _SectionHeader(
               title: 'Catégories Populaires',
               subtitle: 'Explorez par domaine',
             ),
@@ -659,6 +631,7 @@ class _AccueilScreenState extends State<AccueilScreen>
   }
 
   // ── Section Avantages ──────────────────────────────────────────────────────
+
   Widget _buildFeaturesSection() {
     return Container(
       margin: const EdgeInsets.only(top: 28),
@@ -718,6 +691,7 @@ class _AccueilScreenState extends State<AccueilScreen>
   }
 
   // ── CTA Register ───────────────────────────────────────────────────────────
+
   Widget _buildRegisterCTA() {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 24, 16, 0),
@@ -784,6 +758,7 @@ class _AccueilScreenState extends State<AccueilScreen>
   }
 
   // ── Bottom Nav ─────────────────────────────────────────────────────────────
+
   Widget _buildBottomNav() {
     return Container(
       decoration: BoxDecoration(
@@ -859,6 +834,67 @@ class _AccueilScreenState extends State<AccueilScreen>
   }
 }
 
+// ─── Indicateur de rotation (barre de progression) ────────────────────────────
+//
+// S'anime de 0 → 100 % sur la durée du slot, puis repart à 0 au prochain lot.
+
+class _RotationIndicator extends StatefulWidget {
+  final Duration interval;
+  const _RotationIndicator({super.key, required this.interval});
+
+  @override
+  State<_RotationIndicator> createState() => _RotationIndicatorState();
+}
+
+class _RotationIndicatorState extends State<_RotationIndicator>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: widget.interval)
+      ..forward();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AnimatedBuilder(
+            animation: _ctrl,
+            builder: (_, __) => ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: _ctrl.value,
+                minHeight: 3,
+                backgroundColor: AppTheme.gray200,
+                valueColor: const AlwaysStoppedAnimation<Color>(
+                  AppTheme.primaryOrange,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            '🔄 Sélection actualisée toutes les 10 s',
+            style: TextStyle(fontSize: 10, color: AppTheme.gray400),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ─── Widgets réutilisables ────────────────────────────────────────────────────
 
 class _SectionHeader extends StatelessWidget {
@@ -875,201 +911,56 @@ class _SectionHeader extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: titleColor ?? AppTheme.gray900,
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  style: const TextStyle(fontSize: 12, color: AppTheme.gray500),
-                ),
-              ],
-            ),
-          ),
-          if (onSeeAll != null)
-            GestureDetector(
-              onTap: onSeeAll,
-              child: const Row(
-                children: [
-                  Text(
-                    'Voir tout',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: AppTheme.primaryOrange,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  SizedBox(width: 4),
-                  Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    color: AppTheme.primaryOrange,
-                    size: 12,
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Carte bannière ─────────────────────────────────────────────────────────────
-class _BannerCard extends StatelessWidget {
-  final Ad ad;
-  final VoidCallback onTap, onWhatsApp, onCall, onSms;
-
-  const _BannerCard({
-    required this.ad,
-    required this.onTap,
-    required this.onWhatsApp,
-    required this.onCall,
-    required this.onSms,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.12),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
-          child: Stack(
-            fit: StackFit.expand,
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+    child: Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _AdImage(url: ad.mainImageUrl ?? ''),
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withOpacity(0.75),
-                    ],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: titleColor ?? AppTheme.gray900,
                 ),
               ),
-              Positioned(
-                top: 12,
-                left: 12,
-                child: Row(
-                  children: [
-                    if (ad.isFeatured)
-                      _Badge(label: '⭐ Vedette', color: AppTheme.primaryOrange),
-                    if (ad.isUrgent) ...[
-                      const SizedBox(width: 6),
-                      _Badge(label: '🔥 Urgent', color: AppTheme.errorRed),
-                    ],
-                  ],
-                ),
-              ),
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        ad.title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 15,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Text(
-                            ad.formattedPrice,
-                            style: const TextStyle(
-                              color: Color(0xFFFFAB40),
-                              fontWeight: FontWeight.w900,
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          const Icon(
-                            Icons.location_on_outlined,
-                            color: Colors.white60,
-                            size: 13,
-                          ),
-                          Text(
-                            ad.cityDisplay,
-                            style: const TextStyle(
-                              color: Colors.white60,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          _ContactBtn(
-                            icon: Icons.chat_bubble_outline_rounded,
-                            color: const Color(0xFF25D366),
-                            label: 'WhatsApp',
-                            onTap: onWhatsApp,
-                          ),
-                          const SizedBox(width: 8),
-                          _ContactBtn(
-                            icon: Icons.phone_rounded,
-                            color: AppTheme.infoBlue,
-                            onTap: onCall,
-                          ),
-                          const SizedBox(width: 8),
-                          _ContactBtn(
-                            icon: Icons.sms_outlined,
-                            color: const Color(0xFF8B5CF6),
-                            onTap: onSms,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
+              Text(
+                subtitle,
+                style: const TextStyle(fontSize: 12, color: AppTheme.gray500),
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
+        if (onSeeAll != null)
+          GestureDetector(
+            onTap: onSeeAll,
+            child: const Row(
+              children: [
+                Text(
+                  'Voir tout',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppTheme.primaryOrange,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                SizedBox(width: 4),
+                Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  color: AppTheme.primaryOrange,
+                  size: 12,
+                ),
+              ],
+            ),
+          ),
+      ],
+    ),
+  );
 }
 
-// ── Carte grille ───────────────────────────────────────────────────────────────
 class _AdGridCard extends StatelessWidget {
   final Ad ad;
   final VoidCallback onTap, onWhatsApp, onCall, onSms;
@@ -1231,197 +1122,58 @@ class _AdGridCard extends StatelessWidget {
   }
 }
 
-// ── Carte urgente ──────────────────────────────────────────────────────────────
-class _UrgentCard extends StatelessWidget {
-  final Ad ad;
-  final VoidCallback onTap, onWhatsApp, onCall, onSms;
-
-  const _UrgentCard({
-    required this.ad,
-    required this.onTap,
-    required this.onWhatsApp,
-    required this.onCall,
-    required this.onSms,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 185,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-              color: AppTheme.errorRed.withOpacity(0.08),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              flex: 5,
-              child: Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(14),
-                    ),
-                    child: SizedBox.expand(
-                      child: _AdImage(url: ad.mainImageUrl ?? ''),
-                    ),
-                  ),
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: _Badge(
-                      label: 'URGENT',
-                      color: AppTheme.errorRed,
-                      compact: true,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              flex: 5,
-              child: Padding(
-                padding: const EdgeInsets.all(10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      ad.title,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.gray900,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      ad.formattedPrice,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
-                        color: AppTheme.primaryOrange,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.location_on_outlined,
-                          size: 10,
-                          color: AppTheme.gray400,
-                        ),
-                        const SizedBox(width: 2),
-                        Text(
-                          ad.cityDisplay,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: AppTheme.gray400,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
-                    Row(
-                      children: [
-                        _SmallContactBtn(
-                          icon: Icons.chat_bubble_outline_rounded,
-                          color: const Color(0xFF25D366),
-                          onTap: onWhatsApp,
-                          flex: 2,
-                        ),
-                        const SizedBox(width: 4),
-                        _SmallContactBtn(
-                          icon: Icons.phone_rounded,
-                          color: AppTheme.infoBlue,
-                          onTap: onCall,
-                        ),
-                        const SizedBox(width: 4),
-                        _SmallContactBtn(
-                          icon: Icons.sms_outlined,
-                          color: const Color(0xFF8B5CF6),
-                          onTap: onSms,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Cellule catégorie ──────────────────────────────────────────────────────────
 class _CategoryCell extends StatelessWidget {
   final _CategoryItem item;
   final VoidCallback onTap;
   const _CategoryCell({required this.item, required this.onTap});
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: item.color.withOpacity(0.1),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: item.color.withOpacity(0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(item.icon, style: const TextStyle(fontSize: 22)),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              item.name,
-              style: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.gray700,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: item.color.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
-    );
-  }
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: item.color.withOpacity(0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(item.icon, style: const TextStyle(fontSize: 22)),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            item.name,
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.gray700,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
-// ── Carte feature ──────────────────────────────────────────────────────────────
 class _FeatureCard extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -1433,61 +1185,58 @@ class _FeatureCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.05),
+          blurRadius: 8,
+          offset: const Offset(0, 3),
+        ),
+      ],
+    ),
+    child: Row(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            gradient: AppTheme.primaryGradient,
+            shape: BoxShape.circle,
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              gradient: AppTheme.primaryGradient,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: Colors.white, size: 20),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.gray900,
-                  ),
+          child: Icon(icon, color: Colors.white, size: 20),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.gray900,
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: const TextStyle(fontSize: 10, color: AppTheme.gray500),
-                  maxLines: 2,
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: const TextStyle(fontSize: 10, color: AppTheme.gray500),
+                maxLines: 2,
+              ),
+            ],
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
 }
 
-// ── Widget image avec fallback ─────────────────────────────────────────────────
 class _AdImage extends StatelessWidget {
   final String url;
   const _AdImage({required this.url});
@@ -1531,7 +1280,6 @@ class _AdImage extends StatelessWidget {
   );
 }
 
-// ── Micro-widgets ──────────────────────────────────────────────────────────────
 class _Badge extends StatelessWidget {
   final String label;
   final Color color;
@@ -1558,51 +1306,6 @@ class _Badge extends StatelessWidget {
         color: Colors.white,
         fontSize: compact ? 9 : 11,
         fontWeight: FontWeight.w700,
-      ),
-    ),
-  );
-}
-
-class _ContactBtn extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String? label;
-  final VoidCallback onTap;
-  const _ContactBtn({
-    required this.icon,
-    required this.color,
-    this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: label != null ? 12 : 10,
-        vertical: 7,
-      ),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: Colors.white, size: 16),
-          if (label != null) ...[
-            const SizedBox(width: 5),
-            Text(
-              label!,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-                fontSize: 12,
-              ),
-            ),
-          ],
-        ],
       ),
     ),
   );
@@ -1808,10 +1511,8 @@ class _BottomNavItem extends StatelessWidget {
   }
 }
 
-// ── États de chargement / erreur ───────────────────────────────────────────────
 class _LoadingState extends StatelessWidget {
   const _LoadingState();
-
   @override
   Widget build(BuildContext context) => const Column(
     mainAxisAlignment: MainAxisAlignment.center,
@@ -1841,9 +1542,9 @@ class _ErrorState extends StatelessWidget {
         color: AppTheme.gray200.withOpacity(0.5),
       ),
       const SizedBox(height: 16),
-      Text(
+      const Text(
         'Impossible de charger les annonces',
-        style: const TextStyle(
+        style: TextStyle(
           fontWeight: FontWeight.w700,
           fontSize: 16,
           color: AppTheme.gray900,
