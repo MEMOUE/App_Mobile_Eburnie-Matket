@@ -6,6 +6,13 @@ import '../config/app_config.dart';
 import '../models/premium.dart';
 import 'auth_service.dart';
 
+/// Exception levée quand le paiement est encore en attente (202 / 404).
+/// Le polling doit simplement continuer.
+class PaymentPendingException implements Exception {
+  final String message;
+  const PaymentPendingException([this.message = 'Paiement en attente']);
+}
+
 class PremiumService {
   static final PremiumService _instance = PremiumService._internal();
   factory PremiumService() => _instance;
@@ -47,7 +54,7 @@ class PremiumService {
     required int planId,
     required String paymentMethod, // 'wave' | 'orange_money'
     required String phoneNumber,
-    int durationMonths = 1, // ← nouveau : 1 à 12 mois
+    int durationMonths = 1,
   }) async {
     final response = await http
         .post(
@@ -72,22 +79,39 @@ class PremiumService {
 
   // ── Activer un abonnement ─────────────────────────────────────────────────
   // POST /api/premium/subscriptions/{id}/activate/
+  //
+  // Codes possibles du backend (aligné avec Angular) :
+  //   200 / 201 → subscription activée  → retourne PremiumSubscription
+  //   202       → paiement en attente   → lève PaymentPendingException
+  //   404       → subscription pas prête→ lève PaymentPendingException
+  //   autres    → vraie erreur          → lève Exception
 
   Future<PremiumSubscription> activateSubscription(int subscriptionId) async {
     final response = await http
         .post(
           Uri.parse('${_baseUrl}subscriptions/$subscriptionId/activate/'),
           headers: _headers,
+          body: '{}',
         )
         .timeout(AppConfig.connectTimeout);
 
-    if (response.statusCode == 200 ||
-        response.statusCode == 201 ||
-        response.statusCode == 202) {
+    // ── Paiement encore en attente (normal pendant le polling) ────────────
+    if (response.statusCode == 202 || response.statusCode == 404) {
+      throw const PaymentPendingException();
+    }
+
+    // ── Activation confirmée ──────────────────────────────────────────────
+    if (response.statusCode == 200 || response.statusCode == 201) {
       final data = json.decode(utf8.decode(response.bodyBytes));
-      final subJson = data['subscription'] as Map<String, dynamic>? ?? data;
+      // Le backend renvoie soit { "subscription": {...} } soit directement {...}
+      final subJson = (data is Map && data['subscription'] is Map)
+          ? data['subscription'] as Map<String, dynamic>
+          : (data is Map
+                ? Map<String, dynamic>.from(data)
+                : <String, dynamic>{});
       return PremiumSubscription.fromJson(subJson);
     }
+
     throw _parseError(response);
   }
 

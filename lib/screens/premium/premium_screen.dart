@@ -34,7 +34,7 @@ class _PaymentMethod {
 const _paymentMethods = [
   _PaymentMethod(
     value: 'wave',
-    label: 'Wave',
+    label: 'Wave CI',
     emoji: '🌊',
     color: Color(0xFF1E90FF),
     hint: 'Ex: 0700000000',
@@ -301,21 +301,23 @@ class _PremiumScreenState extends State<PremiumScreen>
         planId: _selectedPlan!.id,
         paymentMethod: _selectedPayment.value,
         phoneNumber: _phoneCtrl.text.trim(),
-        durationMonths: _selectedDuration.months, // ← durée choisie
+        durationMonths: _selectedDuration.months,
       );
       if (!mounted) return;
+
       setState(() {
         _subscribeResponse = response;
         _statusMessage = 'Ouverture de la page de paiement…';
+        _submitting = false;
       });
 
+      // Ouvrir l'URL FedaPay dans le navigateur externe
       await _openPaymentUrl(response.paymentUrl);
 
       if (mounted) {
         setState(() {
           _step = _Step.polling;
           _statusMessage = 'Vérification de votre paiement…';
-          _submitting = false;
         });
         _startPolling(response.subscriptionId);
       }
@@ -331,9 +333,14 @@ class _PremiumScreenState extends State<PremiumScreen>
   }
 
   Future<void> _openPaymentUrl(String url) async {
+    if (url.isEmpty) return;
     final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    } catch (_) {
+      // Si l'URL ne s'ouvre pas, l'utilisateur pourra utiliser le bouton de l'écran polling
     }
   }
 
@@ -343,7 +350,9 @@ class _PremiumScreenState extends State<PremiumScreen>
 
   void _startPolling(int subscriptionId) {
     _pollCount = 0;
+    // Premier appel immédiat
     _tryActivate(subscriptionId);
+    // Puis toutes les 5 secondes
     _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       _pollCount++;
       _tryActivate(subscriptionId);
@@ -367,6 +376,10 @@ class _PremiumScreenState extends State<PremiumScreen>
     _pollTimer = null;
   }
 
+  /// Tente d'activer l'abonnement.
+  /// - PaymentPendingException (202/404) → on continue le polling silencieusement
+  /// - subscription.status == 'active'   → succès, on arrête tout
+  /// - Autre erreur                       → on continue le polling (transitoire)
   Future<void> _tryActivate(int subscriptionId) async {
     if (_step == _Step.success) {
       _stopPolling();
@@ -374,15 +387,32 @@ class _PremiumScreenState extends State<PremiumScreen>
     }
     try {
       final sub = await PremiumService().activateSubscription(subscriptionId);
-      if (sub.status == 'active' && mounted) {
+
+      if (!mounted) return;
+
+      if (sub.status == 'active') {
         _stopPolling();
-        setState(() {
-          _successSubscription = sub;
-          _step = _Step.success;
-        });
+
+        // ✅ Rafraîchir le profil pour mettre à jour is_premium_active
+        // en local (localStorage / SharedPreferences) et dans le cache mémoire
+        try {
+          await AuthService().getProfile();
+        } catch (_) {
+          // Échec non bloquant : le dashboard rechargera via PremiumService.checkStatus()
+        }
+
+        if (mounted) {
+          setState(() {
+            _successSubscription = sub;
+            _step = _Step.success;
+          });
+        }
       }
+      // Si status != 'active' (ex: 'pending'), on continue le polling
+    } on PaymentPendingException {
+      // 202 / 404 → paiement encore en cours → continuer le polling silencieusement
     } catch (_) {
-      /* erreurs transitoires ignorées */
+      // Erreur réseau transitoire → continuer le polling
     }
   }
 
@@ -488,11 +518,8 @@ class _PremiumScreenState extends State<PremiumScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Récap du plan
             _buildPlanSummaryBanner(plan),
             const SizedBox(height: 24),
-
-            // Titre section
             const _SectionTitle(title: '📅 Choisissez votre durée'),
             const SizedBox(height: 8),
             const Text(
@@ -504,16 +531,10 @@ class _PremiumScreenState extends State<PremiumScreen>
               ),
             ),
             const SizedBox(height: 16),
-
-            // Cards de durée
             ..._durationOptions.map((opt) => _buildDurationCard(opt, plan)),
             const SizedBox(height: 24),
-
-            // Récap total sélectionné
             _buildDurationTotalBanner(),
             const SizedBox(height: 28),
-
-            // Boutons navigation
             Row(
               children: [
                 Expanded(
@@ -615,7 +636,6 @@ class _PremiumScreenState extends State<PremiumScreen>
         ),
         child: Row(
           children: [
-            // Radio
             AnimatedContainer(
               duration: const Duration(milliseconds: 180),
               width: 20,
@@ -641,8 +661,6 @@ class _PremiumScreenState extends State<PremiumScreen>
                   : null,
             ),
             const SizedBox(width: 14),
-
-            // Label + économie
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -684,8 +702,6 @@ class _PremiumScreenState extends State<PremiumScreen>
                 ],
               ),
             ),
-
-            // Prix + badge
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -873,43 +889,40 @@ class _PremiumScreenState extends State<PremiumScreen>
   // STEP 3 : Formulaire de paiement
   // ═══════════════════════════════════════════════════════════════════════════
 
-  Widget _buildFormView() {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FB),
-      appBar: AppBar(
-        backgroundColor: AppTheme.primaryOrange,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white),
-          onPressed: _goBackToDuration,
-        ),
-        title: const Text(
-          'Paiement',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-        ),
-        elevation: 0,
+  Widget _buildFormView() => Scaffold(
+    backgroundColor: const Color(0xFFF8F9FB),
+    appBar: AppBar(
+      backgroundColor: AppTheme.primaryOrange,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white),
+        onPressed: _goBackToDuration,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildFormPlanSummary(),
-            const SizedBox(height: 24),
-            if (_errorMessage != null) ...[
-              _buildErrorBanner(_errorMessage!),
-              const SizedBox(height: 16),
-            ],
-            _buildPaymentForm(),
-            const SizedBox(height: 20),
-            _buildSecurityNote(),
-            const SizedBox(height: 40),
+      title: const Text(
+        'Paiement',
+        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+      ),
+      elevation: 0,
+    ),
+    body: SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildFormPlanSummary(),
+          const SizedBox(height: 24),
+          if (_errorMessage != null) ...[
+            _buildErrorBanner(_errorMessage!),
+            const SizedBox(height: 16),
           ],
-        ),
+          _buildPaymentForm(),
+          const SizedBox(height: 20),
+          _buildSecurityNote(),
+          const SizedBox(height: 40),
+        ],
       ),
-    );
-  }
+    ),
+  );
 
-  /// Récapitulatif plan + durée + prix dans l'écran formulaire
   Widget _buildFormPlanSummary() {
     final plan = _selectedPlan!;
     final opt = _selectedDuration;
@@ -925,72 +938,62 @@ class _PremiumScreenState extends State<PremiumScreen>
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppTheme.primaryOrange.withOpacity(0.3)),
       ),
-      child: Column(
+      child: Row(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      plan.name,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
-                        color: AppTheme.gray900,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '${plan.isUnlimited ? 'Illimité' : '${plan.maxAds} annonces'} · ${opt.label}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppTheme.gray500,
-                      ),
-                    ),
-                    if (hasDiscount) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        'Remise ${opt.discountPercent}% appliquée',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFF16A34A),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  if (hasDiscount)
-                    Text(
-                      _formatPrice(base),
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppTheme.gray400,
-                        decoration: TextDecoration.lineThrough,
-                      ),
-                    ),
-                  Text(
-                    _formatPrice(total),
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                      color: AppTheme.primaryOrange,
-                    ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  plan.name,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: AppTheme.gray900,
                   ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${plan.isUnlimited ? 'Illimité' : '${plan.maxAds} annonces'} · ${opt.label}',
+                  style: const TextStyle(fontSize: 12, color: AppTheme.gray500),
+                ),
+                if (hasDiscount) ...[
+                  const SizedBox(height: 2),
                   Text(
-                    '${_formatPrice(monthly)}/mois',
+                    'Remise ${opt.discountPercent}% appliquée',
                     style: const TextStyle(
-                      fontSize: 10,
-                      color: AppTheme.gray400,
+                      fontSize: 11,
+                      color: Color(0xFF16A34A),
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (hasDiscount)
+                Text(
+                  _formatPrice(base),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppTheme.gray400,
+                    decoration: TextDecoration.lineThrough,
+                  ),
+                ),
+              Text(
+                _formatPrice(total),
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: AppTheme.primaryOrange,
+                ),
+              ),
+              Text(
+                '${_formatPrice(monthly)}/mois',
+                style: const TextStyle(fontSize: 10, color: AppTheme.gray400),
               ),
             ],
           ),
@@ -1008,8 +1011,6 @@ class _PremiumScreenState extends State<PremiumScreen>
         children: [
           const _SectionTitle(title: '💳 Moyen de paiement'),
           const SizedBox(height: 16),
-
-          // Choix méthode
           Row(
             children: _paymentMethods.map((method) {
               final isSelected = _selectedPayment.value == method.value;
@@ -1060,8 +1061,6 @@ class _PremiumScreenState extends State<PremiumScreen>
             }).toList(),
           ),
           const SizedBox(height: 20),
-
-          // Numéro
           Text(
             'Numéro ${_selectedPayment.label}',
             style: const TextStyle(
@@ -1112,8 +1111,6 @@ class _PremiumScreenState extends State<PremiumScreen>
             },
           ),
           const SizedBox(height: 20),
-
-          // Notice
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -1164,27 +1161,30 @@ class _PremiumScreenState extends State<PremiumScreen>
             ),
           ),
           const SizedBox(height: 24),
-
-          // Bouton payer
           GestureDetector(
-            onTap: _onSubmit,
+            onTap: _submitting ? null : _onSubmit,
             child: Container(
               width: double.infinity,
               height: 56,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFF97316), Color(0xFFFFAB40)],
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                ),
+                gradient: _submitting
+                    ? null
+                    : const LinearGradient(
+                        colors: [Color(0xFFF97316), Color(0xFFFFAB40)],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      ),
+                color: _submitting ? AppTheme.gray400 : null,
                 borderRadius: BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primaryOrange.withOpacity(0.4),
-                    blurRadius: 14,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
+                boxShadow: _submitting
+                    ? null
+                    : [
+                        BoxShadow(
+                          color: AppTheme.primaryOrange.withOpacity(0.4),
+                          blurRadius: 14,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -1192,7 +1192,7 @@ class _PremiumScreenState extends State<PremiumScreen>
                   const Icon(Icons.lock_rounded, color: Colors.white, size: 20),
                   const SizedBox(width: 10),
                   Text(
-                    'Payer ${_formatPrice(_totalPrice(_selectedDuration))} →',
+                    'Payer ${_formatPrice(_totalPrice(_selectedDuration))}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w800,
@@ -1253,7 +1253,43 @@ class _PremiumScreenState extends State<PremiumScreen>
         : null,
     footer: Column(
       children: [
-        const SizedBox(height: 16),
+        // Bouton pour ouvrir FedaPay si l'utilisateur n'a pas encore payé
+        if (_subscribeResponse?.paymentUrl.isNotEmpty == true) ...[
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: () => _openPaymentUrl(_subscribeResponse!.paymentUrl),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 20),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF7ED),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppTheme.primaryOrange.withOpacity(0.4),
+                ),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.open_in_new_rounded,
+                    color: AppTheme.primaryOrange,
+                    size: 18,
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    'Pas encore payé ? Ouvrir FedaPay',
+                    style: TextStyle(
+                      color: AppTheme.primaryOrange,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
         GestureDetector(
           onTap: _checkNow,
           child: Container(
@@ -1350,7 +1386,7 @@ class _PremiumScreenState extends State<PremiumScreen>
               const SizedBox(height: 10),
               if (sub != null) ...[
                 Text(
-                  'Votre abonnement ${sub.plan.name} est actif.',
+                  'Votre abonnement ${sub.plan.name} · ${_selectedDuration.label} est actif.',
                   style: const TextStyle(
                     fontSize: 14,
                     color: AppTheme.gray500,
@@ -1588,12 +1624,15 @@ class _PremiumScreenState extends State<PremiumScreen>
               'Référence : ',
               style: TextStyle(fontSize: 12, color: AppTheme.gray500),
             ),
-            Text(
-              reference,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.gray900,
+            Flexible(
+              child: Text(
+                reference,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.gray900,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
@@ -1925,8 +1964,7 @@ class _PremiumScreenState extends State<PremiumScreen>
   String _formatDate(String isoDate) {
     try {
       final d = DateTime.parse(isoDate);
-      return '${d.day.toString().padLeft(2, '0')}/'
-          '${d.month.toString().padLeft(2, '0')}/${d.year}';
+      return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
     } catch (_) {
       return isoDate;
     }
@@ -1978,6 +2016,7 @@ class _PremiumScreenState extends State<PremiumScreen>
 class _SectionTitle extends StatelessWidget {
   final String title;
   const _SectionTitle({required this.title});
+
   @override
   Widget build(BuildContext context) => Row(
     children: [
@@ -2006,12 +2045,14 @@ class _BenefitTile extends StatelessWidget {
   final IconData icon;
   final String title, subtitle;
   final Color color;
+
   const _BenefitTile({
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.color,
   });
+
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(12),
@@ -2063,11 +2104,13 @@ class _PlanCard extends StatelessWidget {
   final PremiumPlan plan;
   final bool isPopular;
   final VoidCallback onTap;
+
   const _PlanCard({
     required this.plan,
     required this.isPopular,
     required this.onTap,
   });
+
   @override
   Widget build(BuildContext context) => GestureDetector(
     onTap: onTap,
@@ -2244,7 +2287,9 @@ class _PlanCard extends StatelessWidget {
 class _AnimatedCard extends StatelessWidget {
   final Animation<double> animation;
   final Widget child;
+
   const _AnimatedCard({required this.animation, required this.child});
+
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: animation,
