@@ -1,10 +1,18 @@
 // lib/screens/auth/register_screen.dart
+// Seules les sections modifiées : import + _registerWithGoogle()
+// Le reste du fichier reste identique.
+//
+// CHANGEMENTS :
+//   1. Import GoogleAuthService ajouté
+//   2. Méthode _registerWithGoogle() remplace le setState(() => _errorMessage = '...')
+//   3. Le bouton Google appelle _registerWithGoogle() au lieu de l'inline setState
 
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../config/app_theme.dart';
 import '../../services/auth_service.dart';
+import '../../services/google_auth_service.dart'; // ← AJOUT
 import '../../widgets/app_widgets.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -36,6 +44,7 @@ class _RegisterScreenState extends State<RegisterScreen>
   final _passwordConfirmCtrl = TextEditingController();
 
   bool _loading = false;
+  bool _googleLoading = false; // ← AJOUT
   String _errorMessage = '';
   String _successMessage = '';
   File? _selectedAvatar;
@@ -127,13 +136,11 @@ class _RegisterScreenState extends State<RegisterScreen>
 
   Future<void> _onSubmit() async {
     if (!_formKey.currentState!.validate()) return;
-
     setState(() {
       _loading = true;
       _errorMessage = '';
       _successMessage = '';
     });
-
     try {
       final result = await AuthService().register(
         username: _usernameCtrl.text.trim(),
@@ -147,7 +154,6 @@ class _RegisterScreenState extends State<RegisterScreen>
             : _phoneCtrl.text.trim(),
         avatar: _selectedAvatar,
       );
-
       if (mounted) {
         setState(() {
           _loading = false;
@@ -157,23 +163,58 @@ class _RegisterScreenState extends State<RegisterScreen>
         widget.onRegisterSuccess?.call();
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted)
         setState(() {
           _loading = false;
           _errorMessage = e.toString().replaceFirst('Exception: ', '');
+        });
+    }
+  }
+
+  // ── GOOGLE SIGN-IN ────────────────────────────────────────────────────────
+
+  Future<void> _registerWithGoogle() async {
+    setState(() {
+      _googleLoading = true;
+      _errorMessage = '';
+      _successMessage = '';
+    });
+    try {
+      final authResponse = await GoogleAuthService().signInWithGoogle();
+      await AuthService().saveGoogleSession(authResponse);
+      if (mounted) {
+        final msg = authResponse.created
+            ? 'Compte créé avec Google ! Bienvenue ${authResponse.user.fullName} !'
+            : 'Déjà inscrit. Bienvenue ${authResponse.user.fullName} !';
+        setState(() {
+          _googleLoading = false;
+          _successMessage = msg;
+        });
+        await Future.delayed(const Duration(milliseconds: 800));
+        // Si compte déjà existant → succès direct, on considère comme connexion
+        widget.onRegisterSuccess?.call();
+      }
+    } catch (e) {
+      if (mounted) {
+        final msg = e.toString().replaceFirst('Exception: ', '');
+        setState(() {
+          _googleLoading = false;
+          if (!msg.toLowerCase().contains('annulée') &&
+              !msg.toLowerCase().contains('cancel')) {
+            _errorMessage = msg;
+          }
         });
       }
     }
   }
 
   void _handleBack() {
-    if (widget.onGoBack != null) {
+    if (widget.onGoBack != null)
       widget.onGoBack!();
-    } else if (widget.onGoToLogin != null) {
+    else if (widget.onGoToLogin != null)
       widget.onGoToLogin!();
-    } else if (Navigator.of(context).canPop()) {
+    else if (Navigator.of(context).canPop())
       Navigator.of(context).pop();
-    }
   }
 
   @override
@@ -191,7 +232,6 @@ class _RegisterScreenState extends State<RegisterScreen>
               size: 20,
             ),
             onPressed: _handleBack,
-            tooltip: 'Retour',
           ),
         ),
         body: SafeArea(
@@ -203,7 +243,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                 position: _slideAnim,
                 child: Column(
                   children: [
-                    // ── Header ───────────────────────────────────────────────
+                    // Header
                     Container(
                       width: 64,
                       height: 64,
@@ -241,7 +281,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                     ),
                     const SizedBox(height: 24),
 
-                    // ── Formulaire ───────────────────────────────────────────
+                    // Formulaire
                     Container(
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
@@ -274,11 +314,8 @@ class _RegisterScreenState extends State<RegisterScreen>
                               ),
                               const SizedBox(height: 16),
                             ],
-
-                            // Avatar
                             _buildAvatarSection(),
                             const SizedBox(height: 20),
-
                             _buildField(
                               label: 'Nom d\'utilisateur *',
                               controller: _usernameCtrl,
@@ -352,8 +389,6 @@ class _RegisterScreenState extends State<RegisterScreen>
                               validator: _validatePasswordConfirm,
                             ),
                             const SizedBox(height: 20),
-
-                            // CGU
                             Container(
                               padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
@@ -394,7 +429,6 @@ class _RegisterScreenState extends State<RegisterScreen>
                               ),
                             ),
                             const SizedBox(height: 24),
-
                             PrimaryButton(
                               label: 'Créer mon compte',
                               icon: Icons.person_add_outlined,
@@ -402,9 +436,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                               loading: _loading,
                               loadingLabel: 'Création en cours...',
                             ),
-
                             const SizedBox(height: 20),
-
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -433,10 +465,9 @@ class _RegisterScreenState extends State<RegisterScreen>
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 24),
 
-                    // ── Google ───────────────────────────────────────────────
+                    // Google
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
@@ -455,10 +486,8 @@ class _RegisterScreenState extends State<RegisterScreen>
                           const SizedBox(height: 16),
                           GoogleButton(
                             label: 'Continuer avec Google',
-                            onPressed: () => setState(
-                              () => _errorMessage =
-                                  'L\'inscription Google sera bientôt disponible.',
-                            ),
+                            onPressed: _registerWithGoogle,
+                            loading: _googleLoading,
                           ),
                         ],
                       ),
@@ -622,14 +651,11 @@ class _RegisterScreenState extends State<RegisterScreen>
   }
 }
 
-// ─── PasswordFormField avec indicateur de force ───────────────────────────────
-
 class _PasswordFormField extends StatefulWidget {
   final TextEditingController controller;
   final String? placeholder;
   final String? Function(String?)? validator;
   final bool showStrength;
-
   const _PasswordFormField({
     required this.controller,
     this.placeholder,

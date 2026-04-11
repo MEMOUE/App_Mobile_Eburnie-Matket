@@ -1,6 +1,6 @@
 // lib/screens/premium/premium_screen.dart
 //
-// Flow : plans → duration → form → processing → polling → success | failed
+// Flow : plans → duration → processing → polling → success | failed
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -11,46 +11,6 @@ import '../../models/premium.dart';
 import '../../models/user.dart';
 import '../../services/auth_service.dart';
 import '../../services/premium_service.dart';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Méthodes de paiement
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _PaymentMethod {
-  final String value;
-  final String label;
-  final String emoji;
-  final Color color;
-  final String hint;
-  const _PaymentMethod({
-    required this.value,
-    required this.label,
-    required this.emoji,
-    required this.color,
-    required this.hint,
-  });
-}
-
-const _paymentMethods = [
-  _PaymentMethod(
-    value: 'wave',
-    label: 'Wave CI',
-    emoji: '🌊',
-    color: Color(0xFF1E90FF),
-    hint: 'Ex: 0700000000',
-  ),
-  _PaymentMethod(
-    value: 'orange_money',
-    label: 'Orange Money',
-    emoji: '🟠',
-    color: Color(0xFFFF6600),
-    hint: 'Ex: 0700000000',
-  ),
-];
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Options de durée (max 12 mois = 1 an)
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _DurationOption {
   final int months;
@@ -83,27 +43,17 @@ const _durationOptions = [
   ),
 ];
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Étapes du flow
-// ─────────────────────────────────────────────────────────────────────────────
-
-enum _Step { plans, duration, form, processing, polling, success, failed }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Écran principal
-// ─────────────────────────────────────────────────────────────────────────────
+enum _Step { plans, duration, processing, polling, success, failed }
 
 class PremiumScreen extends StatefulWidget {
   final VoidCallback? onBack;
   const PremiumScreen({super.key, this.onBack});
-
   @override
   State<PremiumScreen> createState() => _PremiumScreenState();
 }
 
 class _PremiumScreenState extends State<PremiumScreen>
     with TickerProviderStateMixin {
-  // ── State ──────────────────────────────────────────────────────────────────
   User? _user;
   PremiumStatus? _status;
   List<PremiumPlan> _plans = [];
@@ -111,10 +61,6 @@ class _PremiumScreenState extends State<PremiumScreen>
   _Step _step = _Step.plans;
   PremiumPlan? _selectedPlan;
   _DurationOption _selectedDuration = _durationOptions[0];
-  _PaymentMethod _selectedPayment = _paymentMethods[0];
-
-  final _phoneCtrl = TextEditingController();
-  final _formKey = GlobalKey<FormState>();
 
   bool _loadingPlans = true;
   bool _submitting = false;
@@ -124,19 +70,15 @@ class _PremiumScreenState extends State<PremiumScreen>
   SubscribeResponse? _subscribeResponse;
   PremiumSubscription? _successSubscription;
 
-  // ── Polling ────────────────────────────────────────────────────────────────
   Timer? _pollTimer;
   int _pollCount = 0;
-  static const int _pollMax = 24; // 24 × 5 s = 2 min
+  static const int _pollMax = 24;
 
-  // ── Animations ────────────────────────────────────────────────────────────
   late AnimationController _headerCtrl;
   late AnimationController _cardsCtrl;
   late Animation<double> _headerFade;
   late Animation<Offset> _headerSlide;
   late List<Animation<double>> _cardAnims;
-
-  // ─────────────────────────────────────────────────────────────────────────
 
   @override
   void initState() {
@@ -177,15 +119,10 @@ class _PremiumScreenState extends State<PremiumScreen>
   @override
   void dispose() {
     _stopPolling();
-    _phoneCtrl.dispose();
     _headerCtrl.dispose();
     _cardsCtrl.dispose();
     super.dispose();
   }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Helpers de calcul durée
-  // ─────────────────────────────────────────────────────────────────────────
 
   double _totalPrice(_DurationOption opt) {
     final plan = _selectedPlan;
@@ -204,10 +141,6 @@ class _PremiumScreenState extends State<PremiumScreen>
     return plan.price * opt.months;
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Chargement
-  // ─────────────────────────────────────────────────────────────────────────
-
   Future<void> _loadData() async {
     setState(() {
       _loadingPlans = true;
@@ -218,12 +151,12 @@ class _PremiumScreenState extends State<PremiumScreen>
         PremiumService().getPlans(),
         PremiumService().checkStatus(),
       ]);
-      final plans = results[0] as List<PremiumPlan>;
-      final status = results[1] as PremiumStatus;
       if (mounted) {
         setState(() {
-          _plans = plans.isNotEmpty ? plans : _fallbackPlans;
-          _status = status;
+          _plans = (results[0] as List<PremiumPlan>).isNotEmpty
+              ? results[0] as List<PremiumPlan>
+              : _fallbackPlans;
+          _status = results[1] as PremiumStatus;
           _loadingPlans = false;
         });
         _headerCtrl.forward();
@@ -241,10 +174,6 @@ class _PremiumScreenState extends State<PremiumScreen>
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Navigation entre étapes
-  // ─────────────────────────────────────────────────────────────────────────
-
   void _selectPlan(PremiumPlan plan) => setState(() {
     _selectedPlan = plan;
     _selectedDuration = _durationOptions[0];
@@ -257,20 +186,10 @@ class _PremiumScreenState extends State<PremiumScreen>
     _errorMessage = null;
   });
 
-  void _confirmDuration() => setState(() {
-    _step = _Step.form;
-    _errorMessage = null;
-  });
-
-  void _goBackToDuration() => setState(() {
-    _step = _Step.duration;
-    _errorMessage = null;
-  });
-
   void _retry() {
     _stopPolling();
     setState(() {
-      _step = _Step.form;
+      _step = _Step.duration;
       _errorMessage = null;
       _statusMessage = '';
     });
@@ -281,39 +200,29 @@ class _PremiumScreenState extends State<PremiumScreen>
     if (id != null) _tryActivate(id);
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Soumission
-  // ─────────────────────────────────────────────────────────────────────────
-
-  Future<void> _onSubmit() async {
+  // Aligné sur Angular : payment_method='wave', phone_number='' → FedaPay gère le reste
+  Future<void> _pay() async {
     if (_selectedPlan == null) return;
-    if (!_formKey.currentState!.validate()) return;
-
     setState(() {
       _step = _Step.processing;
       _errorMessage = null;
       _statusMessage = 'Initialisation du paiement…';
       _submitting = true;
     });
-
     try {
       final response = await PremiumService().subscribe(
         planId: _selectedPlan!.id,
-        paymentMethod: _selectedPayment.value,
-        phoneNumber: _phoneCtrl.text.trim(),
+        paymentMethod: 'wave',
+        phoneNumber: '',
         durationMonths: _selectedDuration.months,
       );
       if (!mounted) return;
-
       setState(() {
         _subscribeResponse = response;
-        _statusMessage = 'Ouverture de la page de paiement…';
+        _statusMessage = 'Ouverture de FedaPay…';
         _submitting = false;
       });
-
-      // Ouvrir l'URL FedaPay dans le navigateur externe
       await _openPaymentUrl(response.paymentUrl);
-
       if (mounted) {
         setState(() {
           _step = _Step.polling;
@@ -322,13 +231,12 @@ class _PremiumScreenState extends State<PremiumScreen>
         _startPolling(response.subscriptionId);
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted)
         setState(() {
           _step = _Step.failed;
           _errorMessage = e.toString().replaceFirst('Exception: ', '');
           _submitting = false;
         });
-      }
     }
   }
 
@@ -336,23 +244,14 @@ class _PremiumScreenState extends State<PremiumScreen>
     if (url.isEmpty) return;
     final uri = Uri.parse(url);
     try {
-      if (await canLaunchUrl(uri)) {
+      if (await canLaunchUrl(uri))
         await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
-    } catch (_) {
-      // Si l'URL ne s'ouvre pas, l'utilisateur pourra utiliser le bouton de l'écran polling
-    }
+    } catch (_) {}
   }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Polling
-  // ─────────────────────────────────────────────────────────────────────────
 
   void _startPolling(int subscriptionId) {
     _pollCount = 0;
-    // Premier appel immédiat
     _tryActivate(subscriptionId);
-    // Puis toutes les 5 secondes
     _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       _pollCount++;
       _tryActivate(subscriptionId);
@@ -362,9 +261,7 @@ class _PremiumScreenState extends State<PremiumScreen>
           setState(() {
             _step = _Step.failed;
             _errorMessage =
-                'La confirmation du paiement prend du temps. '
-                'Si vous avez payé, votre abonnement sera activé '
-                'automatiquement dans quelques minutes.';
+                'La confirmation du paiement prend du temps. Si vous avez payé, votre abonnement sera activé automatiquement.';
           });
         }
       }
@@ -376,10 +273,6 @@ class _PremiumScreenState extends State<PremiumScreen>
     _pollTimer = null;
   }
 
-  /// Tente d'activer l'abonnement.
-  /// - PaymentPendingException (202/404) → on continue le polling silencieusement
-  /// - subscription.status == 'active'   → succès, on arrête tout
-  /// - Autre erreur                       → on continue le polling (transitoire)
   Future<void> _tryActivate(int subscriptionId) async {
     if (_step == _Step.success) {
       _stopPolling();
@@ -387,38 +280,22 @@ class _PremiumScreenState extends State<PremiumScreen>
     }
     try {
       final sub = await PremiumService().activateSubscription(subscriptionId);
-
       if (!mounted) return;
-
       if (sub.status == 'active') {
         _stopPolling();
-
-        // ✅ Rafraîchir le profil pour mettre à jour is_premium_active
-        // en local (localStorage / SharedPreferences) et dans le cache mémoire
         try {
           await AuthService().getProfile();
-        } catch (_) {
-          // Échec non bloquant : le dashboard rechargera via PremiumService.checkStatus()
-        }
-
-        if (mounted) {
+        } catch (_) {}
+        if (mounted)
           setState(() {
             _successSubscription = sub;
             _step = _Step.success;
           });
-        }
       }
-      // Si status != 'active' (ex: 'pending'), on continue le polling
     } on PaymentPendingException {
-      // 202 / 404 → paiement encore en cours → continuer le polling silencieusement
-    } catch (_) {
-      // Erreur réseau transitoire → continuer le polling
-    }
+      // 202 / 404 → continuer
+    } catch (_) {}
   }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Build
-  // ─────────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
@@ -438,8 +315,6 @@ class _PremiumScreenState extends State<PremiumScreen>
         return _buildPlansView();
       case _Step.duration:
         return _buildDurationView();
-      case _Step.form:
-        return _buildFormView();
       case _Step.processing:
         return _buildProcessingView();
       case _Step.polling:
@@ -451,9 +326,7 @@ class _PremiumScreenState extends State<PremiumScreen>
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 1 : Plans
-  // ═══════════════════════════════════════════════════════════════════════════
+  // ══════════════ STEP 1 : Plans ══════════════════════════════════════════
 
   Widget _buildPlansView() => CustomScrollView(
     slivers: [
@@ -480,10 +353,10 @@ class _PremiumScreenState extends State<PremiumScreen>
                 )
               else
                 ..._plans.map(
-                  (plan) => _PlanCard(
-                    plan: plan,
-                    isPopular: plan.planType == 'unlimited',
-                    onTap: () => _selectPlan(plan),
+                  (p) => _PlanCard(
+                    plan: p,
+                    isPopular: p.planType == 'unlimited',
+                    onTap: () => _selectPlan(p),
                   ),
                 ),
             ],
@@ -493,12 +366,16 @@ class _PremiumScreenState extends State<PremiumScreen>
     ],
   );
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 2 : Durée (1 – 12 mois)
-  // ═══════════════════════════════════════════════════════════════════════════
+  // ══════════════ STEP 2 : Durée + bouton Payer ════════════════════════════
 
   Widget _buildDurationView() {
     final plan = _selectedPlan!;
+    final opt = _selectedDuration;
+    final total = _totalPrice(opt);
+    final base = _basePrice(opt);
+    final monthly = _monthlyPrice(opt);
+    final hasDiscount = opt.discountPercent > 0;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FB),
       appBar: AppBar(
@@ -508,7 +385,7 @@ class _PremiumScreenState extends State<PremiumScreen>
           onPressed: _goBackToPlans,
         ),
         title: const Text(
-          'Durée de l\'abonnement',
+          'Durée & Paiement',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
         ),
         elevation: 0,
@@ -518,12 +395,64 @@ class _PremiumScreenState extends State<PremiumScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildPlanSummaryBanner(plan),
+            // Récap plan
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF7ED),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: AppTheme.primaryOrange.withOpacity(0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          plan.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                            color: AppTheme.gray900,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          plan.isUnlimited
+                              ? 'Annonces illimitées'
+                              : '${plan.maxAds} annonces max',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.gray500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    plan.formattedPrice,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: AppTheme.primaryOrange,
+                    ),
+                  ),
+                  const Text(
+                    '/mois',
+                    style: TextStyle(fontSize: 12, color: AppTheme.gray500),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 24),
+
             const _SectionTitle(title: '📅 Choisissez votre durée'),
             const SizedBox(height: 8),
             const Text(
-              'Plus la durée est longue, plus vous économisez. Maximum : 1 an.',
+              'Plus la durée est longue, plus vous économisez.',
               style: TextStyle(
                 fontSize: 13,
                 color: AppTheme.gray500,
@@ -531,10 +460,177 @@ class _PremiumScreenState extends State<PremiumScreen>
               ),
             ),
             const SizedBox(height: 16),
-            ..._durationOptions.map((opt) => _buildDurationCard(opt, plan)),
+
+            ..._durationOptions.map(_buildDurationCard),
             const SizedBox(height: 24),
-            _buildDurationTotalBanner(),
+
+            // Total
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFFF7ED), Color(0xFFFFFBEB)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: AppTheme.primaryOrange.withOpacity(0.4),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.primaryOrange.withOpacity(0.1),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Total à payer',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.gray500,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${plan.name} · ${opt.label}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.gray900,
+                          ),
+                        ),
+                        if (hasDiscount) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            'Remise de ${opt.discountPercent}% appliquée',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF16A34A),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      if (hasDiscount)
+                        Text(
+                          _formatPrice(base),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.gray400,
+                            decoration: TextDecoration.lineThrough,
+                          ),
+                        ),
+                      Text(
+                        _formatPrice(total),
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                          color: AppTheme.primaryOrange,
+                        ),
+                      ),
+                      Text(
+                        '${_formatPrice(monthly)}/mois',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppTheme.gray500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Info FedaPay
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppTheme.infoBlueLight,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.infoBlue.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline_rounded,
+                        color: AppTheme.infoBlue,
+                        size: 16,
+                      ),
+                      SizedBox(width: 8),
+                      Text(
+                        'Comment ça fonctionne ?',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1E40AF),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ...[
+                    '1. Cliquez sur « Payer »',
+                    '2. FedaPay s\'ouvre (page sécurisée)',
+                    '3. Choisissez Wave CI ou Mtn Money',
+                    '4. Confirmez sur votre téléphone',
+                    '5. Votre abonnement est activé automatiquement',
+                  ].map(
+                    (t) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        t,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF1E40AF),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Text(
+                        'Accepté : ',
+                        style: TextStyle(fontSize: 11, color: AppTheme.gray500),
+                      ),
+                      const SizedBox(width: 6),
+                      _MethodBadge(
+                        emoji: '🌊',
+                        label: 'Wave CI',
+                        color: const Color(0xFF1E90FF),
+                      ),
+                      const SizedBox(width: 8),
+                      _MethodBadge(
+                        emoji: '🟠',
+                        label: 'MTN Money',
+                        color: const Color.fromARGB(255, 223, 201, 33),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 28),
+
+            // Boutons
             Row(
               children: [
                 Expanded(
@@ -561,11 +657,15 @@ class _PremiumScreenState extends State<PremiumScreen>
                 const SizedBox(width: 12),
                 Expanded(
                   child: GestureDetector(
-                    onTap: _confirmDuration,
+                    onTap: _submitting ? null : _pay,
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 15),
                       decoration: BoxDecoration(
-                        gradient: AppTheme.primaryGradient,
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFF97316), Color(0xFFFFAB40)],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ),
                         borderRadius: BorderRadius.circular(14),
                         boxShadow: [
                           BoxShadow(
@@ -575,27 +675,43 @@ class _PremiumScreenState extends State<PremiumScreen>
                           ),
                         ],
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
+                          const Icon(
+                            Icons.lock_rounded,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
                           Text(
-                            'Continuer',
-                            style: TextStyle(
+                            'Payer ${_formatPrice(total)}',
+                            style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w800,
                               fontSize: 15,
                             ),
                           ),
-                          SizedBox(width: 6),
-                          Icon(
-                            Icons.arrow_forward_rounded,
-                            color: Colors.white,
-                            size: 18,
-                          ),
                         ],
                       ),
                     ),
                   ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: const [
+                Icon(
+                  Icons.lock_outline_rounded,
+                  color: AppTheme.successGreenDark,
+                  size: 14,
+                ),
+                SizedBox(width: 6),
+                Text(
+                  'Paiement sécurisé via FedaPay',
+                  style: TextStyle(fontSize: 12, color: AppTheme.gray500),
                 ),
               ],
             ),
@@ -606,7 +722,7 @@ class _PremiumScreenState extends State<PremiumScreen>
     );
   }
 
-  Widget _buildDurationCard(_DurationOption opt, PremiumPlan plan) {
+  Widget _buildDurationCard(_DurationOption opt) {
     final isSelected = _selectedDuration.months == opt.months;
     final total = _totalPrice(opt);
     final base = _basePrice(opt);
@@ -746,471 +862,7 @@ class _PremiumScreenState extends State<PremiumScreen>
     );
   }
 
-  Widget _buildPlanSummaryBanner(PremiumPlan plan) => Container(
-    padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: const Color(0xFFFFF7ED),
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: AppTheme.primaryOrange.withOpacity(0.3)),
-    ),
-    child: Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                plan.name,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 15,
-                  color: AppTheme.gray900,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                plan.isUnlimited
-                    ? 'Annonces illimitées'
-                    : '${plan.maxAds} annonces max',
-                style: const TextStyle(fontSize: 12, color: AppTheme.gray500),
-              ),
-            ],
-          ),
-        ),
-        Text(
-          plan.formattedPrice,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-            color: AppTheme.primaryOrange,
-          ),
-        ),
-        const Text(
-          '/mois',
-          style: TextStyle(fontSize: 12, color: AppTheme.gray500),
-        ),
-      ],
-    ),
-  );
-
-  Widget _buildDurationTotalBanner() {
-    final opt = _selectedDuration;
-    final total = _totalPrice(opt);
-    final monthly = _monthlyPrice(opt);
-    final base = _basePrice(opt);
-    final hasDiscount = opt.discountPercent > 0;
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFFFF7ED), Color(0xFFFFFBEB)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: AppTheme.primaryOrange.withOpacity(0.4),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.primaryOrange.withOpacity(0.1),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Total à payer',
-                  style: TextStyle(fontSize: 12, color: AppTheme.gray500),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${_selectedPlan?.name} · ${opt.label}',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.gray900,
-                  ),
-                ),
-                if (hasDiscount) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    'Remise de ${opt.discountPercent}% appliquée',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF16A34A),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              if (hasDiscount)
-                Text(
-                  _formatPrice(base),
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppTheme.gray400,
-                    decoration: TextDecoration.lineThrough,
-                  ),
-                ),
-              Text(
-                _formatPrice(total),
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  color: AppTheme.primaryOrange,
-                ),
-              ),
-              Text(
-                '${_formatPrice(monthly)}/mois',
-                style: const TextStyle(fontSize: 11, color: AppTheme.gray500),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 3 : Formulaire de paiement
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  Widget _buildFormView() => Scaffold(
-    backgroundColor: const Color(0xFFF8F9FB),
-    appBar: AppBar(
-      backgroundColor: AppTheme.primaryOrange,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white),
-        onPressed: _goBackToDuration,
-      ),
-      title: const Text(
-        'Paiement',
-        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-      ),
-      elevation: 0,
-    ),
-    body: SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildFormPlanSummary(),
-          const SizedBox(height: 24),
-          if (_errorMessage != null) ...[
-            _buildErrorBanner(_errorMessage!),
-            const SizedBox(height: 16),
-          ],
-          _buildPaymentForm(),
-          const SizedBox(height: 20),
-          _buildSecurityNote(),
-          const SizedBox(height: 40),
-        ],
-      ),
-    ),
-  );
-
-  Widget _buildFormPlanSummary() {
-    final plan = _selectedPlan!;
-    final opt = _selectedDuration;
-    final total = _totalPrice(opt);
-    final monthly = _monthlyPrice(opt);
-    final base = _basePrice(opt);
-    final hasDiscount = opt.discountPercent > 0;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF7ED),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.primaryOrange.withOpacity(0.3)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  plan.name,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
-                    color: AppTheme.gray900,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  '${plan.isUnlimited ? 'Illimité' : '${plan.maxAds} annonces'} · ${opt.label}',
-                  style: const TextStyle(fontSize: 12, color: AppTheme.gray500),
-                ),
-                if (hasDiscount) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    'Remise ${opt.discountPercent}% appliquée',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF16A34A),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              if (hasDiscount)
-                Text(
-                  _formatPrice(base),
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppTheme.gray400,
-                    decoration: TextDecoration.lineThrough,
-                  ),
-                ),
-              Text(
-                _formatPrice(total),
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  color: AppTheme.primaryOrange,
-                ),
-              ),
-              Text(
-                '${_formatPrice(monthly)}/mois',
-                style: const TextStyle(fontSize: 10, color: AppTheme.gray400),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPaymentForm() => Form(
-    key: _formKey,
-    child: _AnimatedCard(
-      animation: _cardAnims[0],
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _SectionTitle(title: '💳 Moyen de paiement'),
-          const SizedBox(height: 16),
-          Row(
-            children: _paymentMethods.map((method) {
-              final isSelected = _selectedPayment.value == method.value;
-              return Expanded(
-                child: GestureDetector(
-                  onTap: () => setState(() => _selectedPayment = method),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    margin: EdgeInsets.only(
-                      right: method != _paymentMethods.last ? 10 : 0,
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 14,
-                      horizontal: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? method.color.withOpacity(0.1)
-                          : Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: isSelected ? method.color : AppTheme.gray200,
-                        width: isSelected ? 2 : 1.5,
-                      ),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          method.emoji,
-                          style: const TextStyle(fontSize: 26),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          method.label,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: isSelected ? method.color : AppTheme.gray600,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            'Numéro ${_selectedPayment.label}',
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.gray700,
-            ),
-          ),
-          const SizedBox(height: 8),
-          TextFormField(
-            controller: _phoneCtrl,
-            keyboardType: TextInputType.phone,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            style: const TextStyle(fontSize: 15, color: AppTheme.gray900),
-            decoration: InputDecoration(
-              hintText: _selectedPayment.hint,
-              prefixIcon: Icon(
-                Icons.phone_rounded,
-                color: _selectedPayment.color,
-                size: 20,
-              ),
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: AppTheme.gray200, width: 2),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: AppTheme.gray200, width: 2),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: _selectedPayment.color, width: 2),
-              ),
-              errorBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(
-                  color: AppTheme.errorRed,
-                  width: 2,
-                ),
-              ),
-            ),
-            validator: (v) {
-              if (v == null || v.isEmpty) return 'Numéro requis';
-              if (v.length < 8) return 'Numéro invalide (min. 8 chiffres)';
-              return null;
-            },
-          ),
-          const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppTheme.infoBlueLight,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppTheme.infoBlue.withOpacity(0.3)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
-                  children: [
-                    Icon(
-                      Icons.info_outline_rounded,
-                      color: AppTheme.infoBlue,
-                      size: 16,
-                    ),
-                    SizedBox(width: 8),
-                    Text(
-                      'Comment ça fonctionne ?',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1E40AF),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                ...[
-                  '1. Cliquez sur « Payer »',
-                  '2. Vous êtes redirigé vers la page sécurisée FedaPay',
-                  '3. Confirmez le paiement sur votre téléphone',
-                  '4. Votre abonnement Premium est activé automatiquement',
-                ].map(
-                  (t) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text(
-                      t,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF1E40AF),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-          GestureDetector(
-            onTap: _submitting ? null : _onSubmit,
-            child: Container(
-              width: double.infinity,
-              height: 56,
-              decoration: BoxDecoration(
-                gradient: _submitting
-                    ? null
-                    : const LinearGradient(
-                        colors: [Color(0xFFF97316), Color(0xFFFFAB40)],
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                      ),
-                color: _submitting ? AppTheme.gray400 : null,
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: _submitting
-                    ? null
-                    : [
-                        BoxShadow(
-                          color: AppTheme.primaryOrange.withOpacity(0.4),
-                          blurRadius: 14,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.lock_rounded, color: Colors.white, size: 20),
-                  const SizedBox(width: 10),
-                  Text(
-                    'Payer ${_formatPrice(_totalPrice(_selectedDuration))}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP : Processing
-  // ═══════════════════════════════════════════════════════════════════════════
+  // ══════════════ Processing / Polling / Success / Failed ══════════════════
 
   Widget _buildProcessingView() => _buildCenteredStep(
     icon: const CircularProgressIndicator(
@@ -1232,10 +884,6 @@ class _PremiumScreenState extends State<PremiumScreen>
     ),
   );
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP : Polling
-  // ═══════════════════════════════════════════════════════════════════════════
-
   Widget _buildPollingView() => _buildCenteredStep(
     icon: const CircularProgressIndicator(
       color: Color(0xFFF59E0B),
@@ -1253,7 +901,6 @@ class _PremiumScreenState extends State<PremiumScreen>
         : null,
     footer: Column(
       children: [
-        // Bouton pour ouvrir FedaPay si l'utilisateur n'a pas encore payé
         if (_subscribeResponse?.paymentUrl.isNotEmpty == true) ...[
           const SizedBox(height: 12),
           GestureDetector(
@@ -1328,10 +975,6 @@ class _PremiumScreenState extends State<PremiumScreen>
       ],
     ),
   );
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP : Succès
-  // ═══════════════════════════════════════════════════════════════════════════
 
   Widget _buildSuccessView() {
     final sub = _successSubscription;
@@ -1496,10 +1139,6 @@ class _PremiumScreenState extends State<PremiumScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP : Échec
-  // ═══════════════════════════════════════════════════════════════════════════
-
   Widget _buildFailedView() => _buildCenteredStep(
     icon: const Icon(Icons.close_rounded, color: AppTheme.errorRed, size: 48),
     iconBg: AppTheme.errorRedLight,
@@ -1558,10 +1197,6 @@ class _PremiumScreenState extends State<PremiumScreen>
       ],
     ),
   );
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Widgets réutilisables
-  // ═══════════════════════════════════════════════════════════════════════════
 
   Widget _buildCenteredStep({
     required Widget icon,
@@ -1792,62 +1427,6 @@ class _PremiumScreenState extends State<PremiumScreen>
     ),
   );
 
-  Widget _buildErrorBanner(String msg) => Container(
-    padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(
-      color: AppTheme.errorRedLight,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: AppTheme.errorRed.withOpacity(0.4)),
-    ),
-    child: Row(
-      children: [
-        const Icon(Icons.error_outline, color: AppTheme.errorRed, size: 20),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            msg,
-            style: const TextStyle(
-              color: Color(0xFF991B1B),
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-
-  Widget _buildSecurityNote() => Container(
-    padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(
-      color: AppTheme.successGreenLight,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: AppTheme.successGreen.withOpacity(0.3)),
-    ),
-    child: const Row(
-      children: [
-        Icon(
-          Icons.lock_outline_rounded,
-          color: AppTheme.successGreenDark,
-          size: 18,
-        ),
-        SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            'Paiement sécurisé via FedaPay. Vos données sont protégées.',
-            style: TextStyle(
-              fontSize: 12,
-              color: AppTheme.successGreenDark,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-
-  // ─── AppBar ───────────────────────────────────────────────────────────────
-
   Widget _buildAppBar() => SliverAppBar(
     expandedHeight: 200,
     pinned: true,
@@ -1952,8 +1531,6 @@ class _PremiumScreenState extends State<PremiumScreen>
     ),
   );
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
-
   String _formatPrice(double price) {
     final s = price
         .toStringAsFixed(0)
@@ -1969,8 +1546,6 @@ class _PremiumScreenState extends State<PremiumScreen>
       return isoDate;
     }
   }
-
-  // ─── Fallback plans ───────────────────────────────────────────────────────
 
   static final List<PremiumPlan> _fallbackPlans = [
     PremiumPlan(
@@ -2009,14 +1584,46 @@ class _PremiumScreenState extends State<PremiumScreen>
   ];
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Widgets locaux
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Widgets locaux ────────────────────────────────────────────────────────────
+
+class _MethodBadge extends StatelessWidget {
+  final String emoji;
+  final String label;
+  final Color color;
+  const _MethodBadge({
+    required this.emoji,
+    required this.label,
+    required this.color,
+  });
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: color.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: color.withOpacity(0.3)),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(emoji, style: const TextStyle(fontSize: 12)),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: color,
+          ),
+        ),
+      ],
+    ),
+  );
+}
 
 class _SectionTitle extends StatelessWidget {
   final String title;
   const _SectionTitle({required this.title});
-
   @override
   Widget build(BuildContext context) => Row(
     children: [
@@ -2045,14 +1652,12 @@ class _BenefitTile extends StatelessWidget {
   final IconData icon;
   final String title, subtitle;
   final Color color;
-
   const _BenefitTile({
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.color,
   });
-
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(12),
@@ -2104,13 +1709,11 @@ class _PlanCard extends StatelessWidget {
   final PremiumPlan plan;
   final bool isPopular;
   final VoidCallback onTap;
-
   const _PlanCard({
     required this.plan,
     required this.isPopular,
     required this.onTap,
   });
-
   @override
   Widget build(BuildContext context) => GestureDetector(
     onTap: onTap,
@@ -2287,9 +1890,7 @@ class _PlanCard extends StatelessWidget {
 class _AnimatedCard extends StatelessWidget {
   final Animation<double> animation;
   final Widget child;
-
   const _AnimatedCard({required this.animation, required this.child});
-
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: animation,

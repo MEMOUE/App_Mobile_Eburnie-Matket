@@ -21,6 +21,7 @@ class AuthService {
   bool get isAuthenticated => _token != null && _token!.isNotEmpty;
 
   // ─── Initialisation ────────────────────────────────────────────────────────
+
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _token = prefs.getString(AppConfig.tokenKey);
@@ -40,7 +41,7 @@ class AuthService {
   };
 
   // ─── Login ─────────────────────────────────────────────────────────────────
-  // POST /api/auth/login/  → { token, user }
+
   Future<AuthResponse> login({
     required String username,
     required String password,
@@ -54,8 +55,7 @@ class AuthService {
         .timeout(AppConfig.connectTimeout);
 
     if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      final authResponse = AuthResponse.fromJson(data);
+      final authResponse = AuthResponse.fromJson(json.decode(response.body));
       await _saveSession(authResponse);
       return authResponse;
     } else {
@@ -64,7 +64,7 @@ class AuthService {
   }
 
   // ─── Register ──────────────────────────────────────────────────────────────
-  // POST /api/user/register/  → { message, user_id }
+
   Future<Map<String, dynamic>> register({
     required String username,
     required String email,
@@ -78,7 +78,6 @@ class AuthService {
     final uri = Uri.parse('${AppConfig.apiUrl}user/register/');
 
     if (avatar != null) {
-      // Multipart request avec avatar
       final request = http.MultipartRequest('POST', uri);
       request.fields['username'] = username;
       request.fields['email'] = email;
@@ -92,17 +91,14 @@ class AuthService {
       request.files.add(
         await http.MultipartFile.fromPath('avatar', avatar.path),
       );
-
       final streamed = await request.send().timeout(AppConfig.connectTimeout);
       final response = await http.Response.fromStream(streamed);
-
       if (response.statusCode == 201 || response.statusCode == 200) {
         return json.decode(response.body);
       } else {
         throw _parseError(response);
       }
     } else {
-      // JSON sans avatar
       final body = {
         'username': username,
         'email': email,
@@ -113,7 +109,6 @@ class AuthService {
         if (phoneNumber != null && phoneNumber.isNotEmpty)
           'phone_number': phoneNumber,
       };
-
       final response = await http
           .post(
             uri,
@@ -121,7 +116,6 @@ class AuthService {
             body: json.encode(body),
           )
           .timeout(AppConfig.connectTimeout);
-
       if (response.statusCode == 201 || response.statusCode == 200) {
         return json.decode(response.body);
       } else {
@@ -131,7 +125,7 @@ class AuthService {
   }
 
   // ─── Get Profile ───────────────────────────────────────────────────────────
-  // GET /api/user/profile/  → User
+
   Future<User> getProfile() async {
     final response = await http
         .get(Uri.parse('${AppConfig.apiUrl}user/profile/'), headers: _headers)
@@ -149,7 +143,7 @@ class AuthService {
   }
 
   // ─── Update Profile ────────────────────────────────────────────────────────
-  // PATCH /api/user/profile/  → User
+
   Future<User> updateProfile({
     required String email,
     required String firstName,
@@ -169,27 +163,18 @@ class AuthService {
       request.fields['email'] = email;
       request.fields['first_name'] = firstName;
       request.fields['last_name'] = lastName;
-      if (phoneNumber != null && phoneNumber.isNotEmpty) {
+      if (phoneNumber != null && phoneNumber.isNotEmpty)
         request.fields['phone_number'] = phoneNumber;
-      }
-      if (location != null && location.isNotEmpty) {
+      if (location != null && location.isNotEmpty)
         request.fields['location'] = location;
-      }
-      if (bio != null && bio.isNotEmpty) {
-        request.fields['bio'] = bio;
-      }
+      if (bio != null && bio.isNotEmpty) request.fields['bio'] = bio;
       request.files.add(
         await http.MultipartFile.fromPath('avatar', avatar.path),
       );
-
       final streamed = await request.send().timeout(AppConfig.connectTimeout);
       final response = await http.Response.fromStream(streamed);
-
-      if (response.statusCode == 200) {
-        return _parseAndCacheUser(response);
-      } else {
-        throw _parseError(response);
-      }
+      if (response.statusCode == 200) return _parseAndCacheUser(response);
+      throw _parseError(response);
     } else {
       final body = {
         'email': email,
@@ -200,21 +185,16 @@ class AuthService {
         if (location != null && location.isNotEmpty) 'location': location,
         if (bio != null && bio.isNotEmpty) 'bio': bio,
       };
-
       final response = await http
           .patch(uri, headers: _headers, body: json.encode(body))
           .timeout(AppConfig.connectTimeout);
-
-      if (response.statusCode == 200) {
-        return _parseAndCacheUser(response);
-      } else {
-        throw _parseError(response);
-      }
+      if (response.statusCode == 200) return _parseAndCacheUser(response);
+      throw _parseError(response);
     }
   }
 
-  // ─── Google Auth ───────────────────────────────────────────────────────────
-  // POST /api/auth/google/  → { token, user, created }
+  // ─── Google Auth (legacy — kept for backward compat) ───────────────────────
+
   Future<AuthResponse> authenticateWithGoogle(String googleToken) async {
     final response = await http
         .post(
@@ -225,8 +205,7 @@ class AuthService {
         .timeout(AppConfig.connectTimeout);
 
     if (response.statusCode == 200 || response.statusCode == 201) {
-      final data = json.decode(response.body);
-      final authResponse = AuthResponse.fromJson(data);
+      final authResponse = AuthResponse.fromJson(json.decode(response.body));
       await _saveSession(authResponse);
       return authResponse;
     } else {
@@ -234,8 +213,16 @@ class AuthService {
     }
   }
 
+  // ─── Sauvegarder une session Google reçue de GoogleAuthService ─────────────
+  // Utilisé après GoogleAuthService().signInWithGoogle() pour persister
+  // le token et l'user sans refaire d'appel réseau.
+
+  Future<void> saveGoogleSession(AuthResponse authResponse) async {
+    await _saveSession(authResponse);
+  }
+
   // ─── Logout ────────────────────────────────────────────────────────────────
-  // POST /api/auth/logout/
+
   Future<void> logout() async {
     if (_token != null) {
       try {
@@ -245,9 +232,7 @@ class AuthService {
               headers: _headers,
             )
             .timeout(const Duration(seconds: 5));
-      } catch (_) {
-        // Continuer même si l'appel échoue
-      }
+      } catch (_) {}
     }
     _token = null;
     _currentUser = null;
@@ -283,14 +268,12 @@ class AuthService {
       if (data is Map) {
         if (data['detail'] != null) return Exception(data['detail']);
         if (data['message'] != null) return Exception(data['message']);
-        // Erreurs de champs Django REST Framework
         final errors = <String>[];
         data.forEach((key, value) {
-          if (value is List) {
+          if (value is List)
             errors.addAll(value.map((e) => e.toString()));
-          } else if (value is String) {
+          else if (value is String)
             errors.add(value);
-          }
         });
         if (errors.isNotEmpty) return Exception(errors.join('. '));
       }

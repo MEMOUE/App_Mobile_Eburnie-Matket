@@ -13,6 +13,7 @@ import '../../models/annonce.dart';
 import '../../models/user.dart';
 import '../../services/auth_service.dart';
 import '../../services/annonce_service.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 // ── Catégories statiques (icônes/couleurs locales) ───────────────────────────
 
@@ -1092,7 +1093,7 @@ class _AdGridCard extends StatelessWidget {
                     Row(
                       children: [
                         _SmallContactBtn(
-                          icon: Icons.chat_bubble_outline_rounded,
+                          faIcon: FontAwesomeIcons.whatsapp,
                           color: const Color(0xFF25D366),
                           onTap: onWhatsApp,
                           flex: 2,
@@ -1312,16 +1313,19 @@ class _Badge extends StatelessWidget {
 }
 
 class _SmallContactBtn extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
+  final IconData? faIcon;
   final Color color;
   final VoidCallback onTap;
   final int flex;
+
   const _SmallContactBtn({
-    required this.icon,
+    this.icon,
+    this.faIcon,
     required this.color,
     required this.onTap,
     this.flex = 1,
-  });
+  }) : assert(icon != null || faIcon != null);
 
   @override
   Widget build(BuildContext context) => Expanded(
@@ -1334,7 +1338,11 @@ class _SmallContactBtn extends StatelessWidget {
           color: color,
           borderRadius: BorderRadius.circular(6),
         ),
-        child: Center(child: Icon(icon, color: Colors.white, size: 14)),
+        child: Center(
+          child: faIcon != null
+              ? FaIcon(faIcon!, color: Colors.white, size: 13)
+              : Icon(icon!, color: Colors.white, size: 14),
+        ),
       ),
     ),
   );

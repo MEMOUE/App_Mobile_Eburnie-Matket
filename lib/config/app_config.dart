@@ -2,9 +2,9 @@
 
 class AppConfig {
   // URLs API
-  static const String apiUrl = 'http://192.168.1.3:8000/api/';
-  static const String mediaUrl = 'http://192.168.1.3:8000';
-  static const String frontendUrl = 'http://192.168.1.3:4200';
+  static const String apiUrl = 'https://www.eburnie-market.com/api/';
+  static const String mediaUrl = 'https://www.eburnie-market.com';
+  static const String frontendUrl = 'https://www.eburnie-market.com';
   // Google OAuth
   static const String googleClientId =
       '335632105023-hvpq1kbtmmf0uf1ga5126uf5e3iabvul.apps.googleusercontent.com';

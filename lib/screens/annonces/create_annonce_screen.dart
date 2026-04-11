@@ -454,15 +454,13 @@ class _CreateAnnonceScreenState extends State<CreateAnnonceScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          _Label('Description *'),
+          _Label('Description'),
           TextFormField(
             controller: _descCtrl,
             maxLines: 5,
-            validator: (v) => (v == null || v.trim().length < 20)
-                ? 'Minimum 20 caractères'
-                : null,
+            // pas de validator → champ optionnel
             decoration: const InputDecoration(
-              hintText: 'État, caractéristiques, inclus...',
+              hintText: 'État, caractéristiques, inclus... (optionnel)',
               prefixIcon: Padding(
                 padding: EdgeInsets.only(bottom: 64),
                 child: Icon(

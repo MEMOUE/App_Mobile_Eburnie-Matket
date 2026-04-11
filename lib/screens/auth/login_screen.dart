@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/app_config.dart';
 import '../../config/app_theme.dart';
 import '../../services/auth_service.dart';
+import '../../services/google_auth_service.dart';
 import '../../widgets/app_widgets.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -56,7 +57,6 @@ class _LoginScreenState extends State<LoginScreen>
       begin: const Offset(0, 0.2),
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _animController, curve: Curves.easeOut));
-
     _animController.forward();
     _loadRememberedUser();
   }
@@ -80,33 +80,30 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
-  String? _validateUsername(String? value) {
-    if (value == null || value.isEmpty) return 'Ce champ est requis';
-    if (value.length < 3) return 'Minimum 3 caractères';
+  String? _validateUsername(String? v) {
+    if (v == null || v.isEmpty) return 'Ce champ est requis';
+    if (v.length < 3) return 'Minimum 3 caractères';
     return null;
   }
 
-  String? _validatePassword(String? value) {
-    if (value == null || value.isEmpty) return 'Ce champ est requis';
-    if (value.length < 8) return 'Minimum 8 caractères';
+  String? _validatePassword(String? v) {
+    if (v == null || v.isEmpty) return 'Ce champ est requis';
+    if (v.length < 8) return 'Minimum 8 caractères';
     return null;
   }
 
   Future<void> _onSubmit() async {
     if (!_formKey.currentState!.validate()) return;
-
     setState(() {
       _loading = true;
       _errorMessage = '';
       _successMessage = '';
     });
-
     try {
       final response = await AuthService().login(
         username: _usernameCtrl.text.trim(),
         password: _passwordCtrl.text,
       );
-
       final prefs = await SharedPreferences.getInstance();
       if (_rememberMe) {
         await prefs.setString(
@@ -116,7 +113,6 @@ class _LoginScreenState extends State<LoginScreen>
       } else {
         await prefs.remove(AppConfig.rememberedUsernameKey);
       }
-
       if (mounted) {
         setState(() {
           _loading = false;
@@ -126,12 +122,11 @@ class _LoginScreenState extends State<LoginScreen>
         widget.onLoginSuccess?.call();
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted)
         setState(() {
           _loading = false;
           _errorMessage = e.toString().replaceFirst('Exception: ', '');
         });
-      }
     }
   }
 
@@ -139,22 +134,43 @@ class _LoginScreenState extends State<LoginScreen>
     setState(() {
       _googleLoading = true;
       _errorMessage = '';
+      _successMessage = '';
     });
-    await Future.delayed(const Duration(seconds: 1));
-    if (mounted) {
-      setState(() {
-        _googleLoading = false;
-        _errorMessage = 'La connexion Google sera bientôt disponible.';
-      });
+    try {
+      final authResponse = await GoogleAuthService().signInWithGoogle();
+      // Sauvegarder la session dans AuthService
+      await AuthService().saveGoogleSession(authResponse);
+      if (mounted) {
+        final msg = authResponse.created
+            ? 'Compte créé ! Bienvenue ${authResponse.user.fullName} !'
+            : 'Bienvenue ${authResponse.user.fullName} !';
+        setState(() {
+          _googleLoading = false;
+          _successMessage = msg;
+        });
+        await Future.delayed(const Duration(milliseconds: 600));
+        widget.onLoginSuccess?.call();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _googleLoading = false;
+          final msg = e.toString().replaceFirst('Exception: ', '');
+          // Ne pas afficher l'erreur si l'utilisateur a juste annulé
+          if (!msg.toLowerCase().contains('annulée') &&
+              !msg.toLowerCase().contains('cancel')) {
+            _errorMessage = msg;
+          }
+        });
+      }
     }
   }
 
   void _handleBack() {
-    if (widget.onGoBack != null) {
+    if (widget.onGoBack != null)
       widget.onGoBack!();
-    } else if (Navigator.of(context).canPop()) {
+    else if (Navigator.of(context).canPop())
       Navigator.of(context).pop();
-    }
   }
 
   @override
@@ -172,7 +188,6 @@ class _LoginScreenState extends State<LoginScreen>
               size: 20,
             ),
             onPressed: _handleBack,
-            tooltip: 'Retour',
           ),
         ),
         body: SafeArea(
@@ -185,7 +200,6 @@ class _LoginScreenState extends State<LoginScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── Header ──────────────────────────────────────────────
                     Center(
                       child: Column(
                         children: [
@@ -210,10 +224,9 @@ class _LoginScreenState extends State<LoginScreen>
                         ],
                       ),
                     ),
-
                     const SizedBox(height: 28),
 
-                    // ── Formulaire ───────────────────────────────────────────
+                    // ── Formulaire ──────────────────────────────────────────
                     Container(
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
@@ -231,7 +244,6 @@ class _LoginScreenState extends State<LoginScreen>
                         key: _formKey,
                         child: Column(
                           children: [
-                            // Messages
                             if (_successMessage.isNotEmpty) ...[
                               AppMessage(
                                 text: _successMessage,
@@ -246,16 +258,11 @@ class _LoginScreenState extends State<LoginScreen>
                               ),
                               const SizedBox(height: 16),
                             ],
-
-                            // Champ identifiant
                             _UsernameField(
                               controller: _usernameCtrl,
                               validator: _validateUsername,
                             ),
-
                             const SizedBox(height: 20),
-
-                            // Mot de passe
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -292,10 +299,7 @@ class _LoginScreenState extends State<LoginScreen>
                                 ),
                               ],
                             ),
-
                             const SizedBox(height: 16),
-
-                            // Se souvenir de moi
                             Row(
                               children: [
                                 Checkbox(
@@ -321,9 +325,7 @@ class _LoginScreenState extends State<LoginScreen>
                                 ),
                               ],
                             ),
-
                             const SizedBox(height: 24),
-
                             PrimaryButton(
                               label: 'Se connecter',
                               icon: Icons.login,
@@ -331,9 +333,7 @@ class _LoginScreenState extends State<LoginScreen>
                               loading: _loading,
                               loadingLabel: 'Connexion en cours...',
                             ),
-
                             const SizedBox(height: 20),
-
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -362,10 +362,9 @@ class _LoginScreenState extends State<LoginScreen>
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 24),
 
-                    // ── Connexion sociale ────────────────────────────────────
+                    // ── Connexion Google ────────────────────────────────────
                     Container(
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
@@ -391,9 +390,7 @@ class _LoginScreenState extends State<LoginScreen>
                         ],
                       ),
                     ),
-
                     const SizedBox(height: 24),
-
                     Row(
                       children: [
                         Expanded(
@@ -424,55 +421,47 @@ class _LoginScreenState extends State<LoginScreen>
   }
 }
 
-// ─── Champ identifiant (sans doublon FormField invisible) ─────────────────────
-
 class _UsernameField extends StatelessWidget {
   final TextEditingController controller;
   final String? Function(String?)? validator;
-
   const _UsernameField({required this.controller, this.validator});
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Email ou nom d\'utilisateur',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.gray700,
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Text(
+        'Email ou nom d\'utilisateur',
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: AppTheme.gray700,
+        ),
+      ),
+      const SizedBox(height: 8),
+      TextFormField(
+        controller: controller,
+        keyboardType: TextInputType.emailAddress,
+        textInputAction: TextInputAction.next,
+        validator: validator,
+        style: const TextStyle(color: AppTheme.gray900, fontSize: 15),
+        decoration: const InputDecoration(
+          hintText: 'Entrez votre email ou nom d\'utilisateur',
+          prefixIcon: Icon(
+            Icons.person_outline,
+            color: AppTheme.gray400,
+            size: 20,
           ),
         ),
-        const SizedBox(height: 8),
-        TextFormField(
-          controller: controller,
-          keyboardType: TextInputType.emailAddress,
-          textInputAction: TextInputAction.next,
-          validator: validator,
-          style: const TextStyle(color: AppTheme.gray900, fontSize: 15),
-          decoration: const InputDecoration(
-            hintText: 'Entrez votre email ou nom d\'utilisateur',
-            prefixIcon: Icon(
-              Icons.person_outline,
-              color: AppTheme.gray400,
-              size: 20,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+      ),
+    ],
+  );
 }
-
-// ─── PasswordInput ────────────────────────────────────────────────────────────
 
 class _PasswordInput extends StatefulWidget {
   final TextEditingController controller;
   final String? placeholder;
   final String? Function(String?)? validator;
-
   const _PasswordInput({
     required this.controller,
     this.placeholder,
@@ -485,44 +474,36 @@ class _PasswordInput extends StatefulWidget {
 
 class _PasswordInputState extends State<_PasswordInput> {
   bool _obscure = true;
-
   @override
-  Widget build(BuildContext context) {
-    return TextFormField(
-      controller: widget.controller,
-      obscureText: _obscure,
-      validator: widget.validator,
-      textInputAction: TextInputAction.done,
-      style: const TextStyle(color: AppTheme.gray900, fontSize: 15),
-      decoration: InputDecoration(
-        hintText: widget.placeholder,
-        prefixIcon: const Icon(
-          Icons.lock_outline,
+  Widget build(BuildContext context) => TextFormField(
+    controller: widget.controller,
+    obscureText: _obscure,
+    validator: widget.validator,
+    textInputAction: TextInputAction.done,
+    style: const TextStyle(color: AppTheme.gray900, fontSize: 15),
+    decoration: InputDecoration(
+      hintText: widget.placeholder,
+      prefixIcon: const Icon(
+        Icons.lock_outline,
+        color: AppTheme.gray400,
+        size: 20,
+      ),
+      suffixIcon: IconButton(
+        icon: Icon(
+          _obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
           color: AppTheme.gray400,
           size: 20,
         ),
-        suffixIcon: IconButton(
-          icon: Icon(
-            _obscure
-                ? Icons.visibility_off_outlined
-                : Icons.visibility_outlined,
-            color: AppTheme.gray400,
-            size: 20,
-          ),
-          onPressed: () => setState(() => _obscure = !_obscure),
-        ),
+        onPressed: () => setState(() => _obscure = !_obscure),
       ),
-    );
-  }
+    ),
+  );
 }
-
-// ─── Feature Badge ────────────────────────────────────────────────────────────
 
 class _FeatureBadge extends StatelessWidget {
   final IconData icon;
   final Color color;
   final String label;
-
   const _FeatureBadge({
     required this.icon,
     required this.color,
