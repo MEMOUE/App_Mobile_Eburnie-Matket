@@ -5,9 +5,14 @@ class AppConfig {
   static const String apiUrl = 'https://www.eburnie-market.com/api/';
   static const String mediaUrl = 'https://www.eburnie-market.com';
   static const String frontendUrl = 'https://www.eburnie-market.com';
-  // Google OAuth
+
+  // Google OAuth — client ID Web (pour Android et backend Django)
   static const String googleClientId =
       '335632105023-hvpq1kbtmmf0uf1ga5126uf5e3iabvul.apps.googleusercontent.com';
+
+  // Google OAuth — client ID iOS
+  static const String googleClientIdIos =
+      '335632105023-o9bd3gekvjk2qcqkrd62vlimqoartoc8.apps.googleusercontent.com';
 
   // App
   static const String appName = 'Éburnie-Market';

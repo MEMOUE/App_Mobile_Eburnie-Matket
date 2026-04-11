@@ -1,12 +1,15 @@
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    // Le plugin Flutter doit être appliqué après Android et Kotlin
     id("dev.flutter.flutter-gradle-plugin")
+    // AJOUT : Indispensable pour lire le fichier google-services.json
+    id("com.google.gms.google-services")
 }
 
 android {
-    namespace = "com.eburnie_market.app_mobile_eburnie_market"
+    // Changement : On utilise l'ID sans underscores pour correspondre à votre client Google
+    namespace = "com.eburniemarket.appMobileEburnieMarket"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -20,10 +23,9 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.eburnie_market.app_mobile_eburnie_market"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        // IMPORTANT : Cet ID doit être EXACTEMENT celui de votre console Google Cloud (ID Android)
+        applicationId = "com.eburniemarket.appMobileEburnieMarket"
+        
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -32,8 +34,7 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+            // Utilise la clé de debug pour permettre le test de la version release
             signingConfig = signingConfigs.getByName("debug")
         }
     }
@@ -41,4 +42,8 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Les dépendances sont gérées par Flutter, mais vous pouvez en ajouter ici si nécessaire
 }
