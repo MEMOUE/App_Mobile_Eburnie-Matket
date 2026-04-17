@@ -86,12 +86,12 @@ class _AccueilScreenState extends State<AccueilScreen>
       value: 'vehicules',
       color: Color(0xFFEF4444),
     ),
-    _CategoryItem(
-      icon: '💼',
-      name: 'Emploi',
-      value: 'emploi_stages',
-      color: Color(0xFFEAB308),
-    ),
+    // _CategoryItem(
+    //   icon: '💼',
+    //   name: 'Emploi',
+    //   value: 'emploi_stages',
+    //   color: Color(0xFFEAB308),
+    // ),
     _CategoryItem(
       icon: '🏠',
       name: 'Immobilier',
@@ -122,12 +122,12 @@ class _AccueilScreenState extends State<AccueilScreen>
       value: 'sport_loisirs',
       color: Color(0xFFF97316),
     ),
-    _CategoryItem(
-      icon: '🔧',
-      name: 'Services',
-      value: 'services',
-      color: Color(0xFF8B5CF6),
-    ),
+    // _CategoryItem(
+    //   icon: '🔧',
+    //   name: 'Services',
+    //   value: 'services',
+    //   color: Color(0xFF8B5CF6),
+    // ),
     _CategoryItem(
       icon: '🌾',
       name: 'Agro',

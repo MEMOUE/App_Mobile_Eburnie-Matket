@@ -564,13 +564,13 @@ class _AdCard extends StatelessWidget {
   String _categoryLabel(String? cat) {
     const map = {
       'vehicules': 'Véhicules',
-      'emploi_stages': 'Emploi',
+      // 'emploi_stages': 'Emploi',
       'immobilier': 'Immobilier',
       'electronique': 'Électronique',
       'maison_jardin': 'Maison',
       'mode_beaute': 'Mode',
       'sport_loisirs': 'Sport',
-      'services': 'Services',
+      // 'services': 'Services',
       'agroalimentaire': 'Agro',
       'animaux': 'Animaux',
       'autres': 'Autres',

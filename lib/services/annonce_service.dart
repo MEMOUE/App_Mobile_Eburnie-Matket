@@ -280,13 +280,13 @@ class AnnonceService {
     } catch (_) {}
     return const [
       {'value': 'vehicules', 'label': 'Véhicules'},
-      {'value': 'emploi_stages', 'label': 'Emploi & Stages'},
+      // {'value': 'emploi_stages', 'label': 'Emploi & Stages'},
       {'value': 'immobilier', 'label': 'Immobilier'},
       {'value': 'electronique', 'label': 'Électronique'},
       {'value': 'maison_jardin', 'label': 'Maison & Jardin'},
       {'value': 'mode_beaute', 'label': 'Mode & Beauté'},
       {'value': 'sport_loisirs', 'label': 'Sport & Loisirs'},
-      {'value': 'services', 'label': 'Services'},
+      // {'value': 'services', 'label': 'Services'},
       {'value': 'agroalimentaire', 'label': 'Agroalimentaire'},
       {'value': 'animaux', 'label': 'Animaux'},
       {'value': 'autres', 'label': 'Autres'},
