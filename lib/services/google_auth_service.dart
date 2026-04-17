@@ -12,35 +12,40 @@ class GoogleAuthService {
   factory GoogleAuthService() => _instance;
   GoogleAuthService._internal();
 
+  // iOS  → clientId = iOS client ID (obligatoire pour éviter le crash)
+  // Android → clientId = null (lu depuis google-services.json)
+  //           serverClientId = Web client ID (nécessaire pour obtenir l'idToken)
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     clientId: Platform.isIOS ? AppConfig.googleClientIdIos : null,
+    serverClientId: Platform.isAndroid ? AppConfig.googleClientId : null,
     scopes: ['email', 'profile'],
   );
 
   Future<AuthResponse> signInWithGoogle() async {
     try {
-      // 1. Déconnexion propre
+      // 1. Déconnexion propre pour forcer le sélecteur de compte
       await _googleSignIn.signOut();
 
-      // 2. Tentative de connexion
+      // 2. Affichage du sélecteur de compte Google
       final GoogleSignInAccount? account = await _googleSignIn.signIn();
 
       if (account == null) {
         throw Exception('Connexion Google annulée.');
       }
 
-      // 3. Récupération des jetons
+      // 3. Récupération des jetons d'authentification
       final GoogleSignInAuthentication auth = await account.authentication;
 
       final String? idToken = auth.idToken;
 
       if (idToken == null || idToken.isEmpty) {
         throw Exception(
-          'Impossible d\'obtenir le token Google (ID Token manquant).',
+          'Impossible d\'obtenir le token Google (ID Token manquant).\n'
+          'Vérifiez que le serverClientId (Web) est bien configuré.',
         );
       }
 
-      // 4. Appel Backend
+      // 4. Envoi du token au backend Django
       final response = await http
           .post(
             Uri.parse('${AppConfig.apiUrl}auth/google/'),
@@ -55,17 +60,18 @@ class GoogleAuthService {
         );
       }
 
+      // Gestion des erreurs backend
       final data = json.decode(utf8.decode(response.bodyBytes));
       final msg =
           data['detail'] ??
           data['message'] ??
           data['error'] ??
-          'Erreur inconnue';
+          'Erreur inconnue (${response.statusCode})';
       throw Exception(msg.toString());
     } on SocketException {
       throw Exception('Problème de connexion réseau.');
     } catch (e) {
-      print("Erreur complète GoogleAuth: $e");
+      print('Erreur complète GoogleAuth: $e');
       rethrow;
     }
   }
