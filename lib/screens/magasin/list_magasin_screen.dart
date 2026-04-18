@@ -11,11 +11,13 @@ import '../../services/annonce_service.dart';
 class ListMagasinScreen extends StatefulWidget {
   final String? initialVille;
   final String? initialCategorie;
+  final String? initialMarche; // ← NOUVEAU
 
   const ListMagasinScreen({
     super.key,
     this.initialVille,
     this.initialCategorie,
+    this.initialMarche,
   });
 
   @override
@@ -47,6 +49,7 @@ class _ListMagasinScreenState extends State<ListMagasinScreen> {
     super.initState();
     _selectedVille = widget.initialVille;
     _selectedCategorie = widget.initialCategorie;
+    _selectedMarche = widget.initialMarche; // ← NOUVEAU
     _loadReferenceData();
     _loadMagasins();
   }
@@ -265,7 +268,6 @@ class _ListMagasinScreenState extends State<ListMagasinScreen> {
                           ),
                         ],
                         const SizedBox(height: 20),
-                        // Vérifiés
                         GestureDetector(
                           onTap: () =>
                               setLocal(() => tmpVerified = !tmpVerified),
@@ -303,7 +305,7 @@ class _ListMagasinScreenState extends State<ListMagasinScreen> {
                                 ),
                                 const Spacer(),
                                 if (tmpVerified)
-                                  Icon(
+                                  const Icon(
                                     Icons.check_circle,
                                     color: AppTheme.successGreen,
                                     size: 20,
@@ -548,12 +550,9 @@ class _ListMagasinScreenState extends State<ListMagasinScreen> {
         child: CircularProgressIndicator(color: AppTheme.primaryOrange),
       );
     }
-    if (_error != null && _magasins.isEmpty) {
-      return _buildError();
-    }
-    if (_magasins.isEmpty) {
-      return _buildEmpty();
-    }
+    if (_error != null && _magasins.isEmpty) return _buildError();
+    if (_magasins.isEmpty) return _buildEmpty();
+
     return RefreshIndicator(
       onRefresh: _loadMagasins,
       color: AppTheme.primaryOrange,
@@ -689,7 +688,6 @@ class _MagasinCard extends StatelessWidget {
         ),
         child: Column(
           children: [
-            // Bannière gradient + logo
             Stack(
               clipBehavior: Clip.none,
               children: [
@@ -771,7 +769,6 @@ class _MagasinCard extends StatelessWidget {
                 ),
               ],
             ),
-            // Contenu
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 26, 12, 10),

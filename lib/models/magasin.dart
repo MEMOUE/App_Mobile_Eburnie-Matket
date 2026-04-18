@@ -154,21 +154,51 @@ class Marche {
   final String value;
   final String label;
   final String villeCode;
+  final String villeLabel; // ← AJOUT : libellé de la ville parent
 
   const Marche({
     required this.value,
     required this.label,
     required this.villeCode,
+    this.villeLabel = '',
   });
 
   factory Marche.fromJson(Map<String, dynamic> json) => Marche(
     value: json['value']?.toString() ?? '',
     label: json['label'] ?? '',
     villeCode: json['ville_code'] ?? '',
+    villeLabel: json['ville_label'] ?? json['ville_display'] ?? '',
   );
 }
 
-// ─── Sélecteur léger (utilisé dans le formulaire annonce) ─────────────────
+// ─── Marchés groupés par ville ────────────────────────────────────────────
+//
+// Miroir de MarcheCity dans Angular.
+
+class MarcheGroup {
+  final String ville;
+  final String villeLabel;
+  final List<Marche> marches;
+
+  MarcheGroup({
+    required this.ville,
+    required this.villeLabel,
+    required this.marches,
+  });
+
+  factory MarcheGroup.fromJson(Map<String, dynamic> json) {
+    final rawMarches = json['marches'] as List<dynamic>? ?? [];
+    return MarcheGroup(
+      ville: json['ville'] ?? '',
+      villeLabel: json['ville_label'] ?? json['ville'] ?? '',
+      marches: rawMarches
+          .map((e) => Marche.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
+// ─── Sélecteur léger (formulaire annonce) ────────────────────────────────
 
 class MagasinSelector {
   final int id;

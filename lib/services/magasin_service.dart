@@ -46,6 +46,46 @@ class MagasinService {
     return [];
   }
 
+  // ─── Marchés groupés par ville ────────────────────────────────────────────
+  //
+  // Essaie d'abord l'endpoint /marches/grouped/ du backend.
+  // En cas d'échec, reconstruit le groupement côté client à partir de getMarches().
+
+  Future<List<MarcheGroup>> getMarchesGrouped() async {
+    // Tentative via endpoint dédié
+    try {
+      final response = await http
+          .get(Uri.parse('${_baseUrl}marches/grouped/'), headers: _headers)
+          .timeout(AppConfig.connectTimeout);
+      if (response.statusCode == 200) {
+        final data = json.decode(utf8.decode(response.bodyBytes));
+        final list = data['grouped'] ?? data;
+        if (list is List && list.isNotEmpty) {
+          return list.map((e) => MarcheGroup.fromJson(e)).toList();
+        }
+      }
+    } catch (_) {}
+
+    // Fallback : groupement client-side
+    final marches = await getMarches();
+    if (marches.isEmpty) return [];
+
+    final Map<String, MarcheGroup> grouped = {};
+    for (final m in marches) {
+      if (!grouped.containsKey(m.villeCode)) {
+        grouped[m.villeCode] = MarcheGroup(
+          ville: m.villeCode,
+          villeLabel: m.villeLabel.isNotEmpty ? m.villeLabel : m.villeCode,
+          marches: [],
+        );
+      }
+      grouped[m.villeCode]!.marches.add(m);
+    }
+
+    // Garder seulement les villes avec ≥ 2 marchés (comme Angular)
+    return grouped.values.where((g) => g.marches.length >= 2).toList();
+  }
+
   // ─── Liste publique ───────────────────────────────────────────────────────
 
   Future<List<Magasin>> getMagasins({
@@ -116,7 +156,7 @@ class MagasinService {
     throw _parseError(response);
   }
 
-  // ─── Sélecteur (liste légère pour le formulaire annonce) ─────────────────
+  // ─── Sélecteur léger ─────────────────────────────────────────────────────
 
   Future<List<MagasinSelector>> getMyMagasinsSelector() async {
     try {

@@ -15,6 +15,10 @@ import '../screens/annonces/list_annonce_screen.dart';
 import '../screens/annonces/detail_annonce_screen.dart';
 import '../screens/annonces/my_ds_screen.dart';
 import '../screens/premium/premium_screen.dart';
+import '../screens/magasin/list_magasin_screen.dart';
+import '../screens/magasin/detail_magasin_screen.dart';
+import '../screens/magasin/my_magasin_screen.dart';
+import '../screens/magasin/new_magasin_screen.dart';
 
 class AppRouter {
   static const _publicPaths = [
@@ -25,6 +29,7 @@ class AppRouter {
     '/reset-password',
     '/annonces',
     '/search',
+    '/magasins', // public
   ];
 
   static final GoRouter router = GoRouter(
@@ -64,6 +69,10 @@ class AppRouter {
             onGoToNewAd: () => AuthService().isAuthenticated
                 ? context.go('/create-ad')
                 : context.go('/login'),
+            onGoToMagasin: (id) => context.push('/magasins/$id'),
+            onGoToMagasins: () => context.go('/magasins'),
+            onGoToMagasinsByMarche: (marche) =>
+                context.go('/magasins?marche=$marche'),
           ),
         ),
       ),
@@ -77,7 +86,6 @@ class AppRouter {
             onLoginSuccess: () => context.go('/dashboard'),
             onGoToRegister: () => context.go('/register'),
             onGoToForgotPassword: () => context.go('/forgot-password'),
-            // Retour vers l'accueil si on ne peut pas pop
             onGoBack: () =>
                 context.canPop() ? context.pop() : context.go('/accueil'),
           ),
@@ -90,7 +98,6 @@ class AppRouter {
           RegisterScreen(
             onRegisterSuccess: () => context.go('/login'),
             onGoToLogin: () => context.go('/login'),
-            // Retour vers login ou accueil
             onGoBack: () =>
                 context.canPop() ? context.pop() : context.go('/accueil'),
           ),
@@ -129,6 +136,8 @@ class AppRouter {
             onGoToNewAd: () => context.go('/create-ad'),
             onGoToHome: () => context.go('/accueil'),
             onGoToPremium: () => context.go('/premium'),
+            onGoToMyMagasins: () => context.go('/my-magasins'),
+            onGoToNewMagasin: () => context.go('/create-magasin'),
             onLogout: () async {
               await AuthService().logout();
               if (context.mounted) context.go('/accueil');
@@ -238,6 +247,60 @@ class AppRouter {
                   context.canPop() ? context.pop() : context.go('/accueil'),
             ),
           );
+        },
+      ),
+
+      // ══════════════════════════════════════════════════════════════════════
+      // ── MAGASINS ──────────────────────────────────────────────────────────
+      // ══════════════════════════════════════════════════════════════════════
+
+      // ── Liste magasins (public) ────────────────────────────────────────────
+      GoRoute(
+        path: '/magasins',
+        pageBuilder: (context, state) {
+          final ville = state.uri.queryParameters['ville'];
+          final cat = state.uri.queryParameters['categorie'];
+          final marche = state.uri.queryParameters['marche'];
+          return _slideTransition(
+            state,
+            ListMagasinScreen(
+              initialVille: ville,
+              initialCategorie: cat,
+              initialMarche: marche,
+            ),
+          );
+        },
+      ),
+
+      // ── Détail magasin (public) ────────────────────────────────────────────
+      GoRoute(
+        path: '/magasins/:id',
+        pageBuilder: (context, state) {
+          final id = int.tryParse(state.pathParameters['id'] ?? '0') ?? 0;
+          return _slideTransition(state, DetailMagasinScreen(magasinId: id));
+        },
+      ),
+
+      // ── Mes magasins (protégé) ─────────────────────────────────────────────
+      GoRoute(
+        path: '/my-magasins',
+        pageBuilder: (context, state) =>
+            _slideTransition(state, const MyMagasinScreen()),
+      ),
+
+      // ── Créer un magasin (protégé) ─────────────────────────────────────────
+      GoRoute(
+        path: '/create-magasin',
+        pageBuilder: (context, state) =>
+            _slideTransition(state, const NewMagasinScreen()),
+      ),
+
+      // ── Modifier un magasin (protégé) ──────────────────────────────────────
+      GoRoute(
+        path: '/edit-magasin/:id',
+        pageBuilder: (context, state) {
+          final id = int.tryParse(state.pathParameters['id'] ?? '0') ?? 0;
+          return _slideTransition(state, NewMagasinScreen(magasinId: id));
         },
       ),
     ],

@@ -41,6 +41,8 @@ class DashboardScreen extends StatefulWidget {
   final VoidCallback? onGoToNewAd;
   final VoidCallback? onGoToHome;
   final VoidCallback? onGoToPremium;
+  final VoidCallback? onGoToMyMagasins;
+  final VoidCallback? onGoToNewMagasin;
   final VoidCallback? onLogout;
 
   const DashboardScreen({
@@ -50,6 +52,8 @@ class DashboardScreen extends StatefulWidget {
     this.onGoToNewAd,
     this.onGoToHome,
     this.onGoToPremium,
+    this.onGoToMyMagasins,
+    this.onGoToNewMagasin,
     this.onLogout,
   });
 
@@ -92,9 +96,9 @@ class _DashboardScreenState extends State<DashboardScreen>
       vsync: this,
       duration: const Duration(milliseconds: 900),
     );
-    _cardAnims = List.generate(6, (i) {
-      final start = i * 0.10;
-      final end = (start + 0.50).clamp(0.0, 1.0);
+    _cardAnims = List.generate(8, (i) {
+      final start = i * 0.08;
+      final end = (start + 0.45).clamp(0.0, 1.0);
       return Tween<double>(begin: 0, end: 1).animate(
         CurvedAnimation(
           parent: _cardsController,
@@ -116,7 +120,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   Future<void> _loadData() async {
     setState(() => _loadingStats = true);
 
-    // 1. Profil utilisateur
     try {
       _user = AuthService().currentUser;
       if (_user == null) {
@@ -124,7 +127,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       }
     } catch (_) {}
 
-    // 2. Données réelles en parallèle : statut premium + mes annonces
     final results = await Future.wait([
       PremiumService().checkStatus().catchError(
         (_) => PremiumStatus(
@@ -218,9 +220,13 @@ class _DashboardScreenState extends State<DashboardScreen>
                     const SizedBox(height: 24),
                     _buildStatsSection(),
                     const SizedBox(height: 28),
-                    _buildSectionTitle('Actions rapides'),
+                    _buildSectionTitle('Annonces'),
                     const SizedBox(height: 14),
-                    _buildQuickActions(),
+                    _buildAnnoncesActions(),
+                    const SizedBox(height: 28),
+                    _buildSectionTitle('Magasins & Boutiques'),
+                    const SizedBox(height: 14),
+                    _buildMagasinsActions(),
                     const SizedBox(height: 28),
                     _buildPremiumSection(),
                     const SizedBox(height: 28),
@@ -244,7 +250,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Widget _buildAppBar() {
     return SliverAppBar(
-      expandedHeight: 210,
+      expandedHeight: 260,
       pinned: true,
       backgroundColor: AppTheme.primaryOrange,
       elevation: 0,
@@ -294,7 +300,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Icônes en haut à droite
                           Row(
                             children: [
                               const Spacer(),
@@ -305,7 +310,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                                   size: 24,
                                 ),
                                 onPressed: widget.onGoToHome,
-                                tooltip: 'Accueil',
                               ),
                               IconButton(
                                 icon: const Icon(
@@ -314,11 +318,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                                   size: 24,
                                 ),
                                 onPressed: () {},
-                                tooltip: 'Notifications',
                               ),
                             ],
                           ),
-                          // Avatar + infos utilisateur
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
@@ -349,7 +351,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     const SizedBox(height: 6),
-                                    // Badge type de compte (Premium / Gratuit)
                                     _buildAccountTypeBadge(),
                                   ],
                                 ),
@@ -375,6 +376,78 @@ class _DashboardScreenState extends State<DashboardScreen>
                               ),
                             ],
                           ),
+                          // ── Bouton Premium (comptes gratuits uniquement) ──
+                          if (!(_premiumStatus?.isPremium ??
+                              _user?.isPremiumActive ??
+                              false)) ...[
+                            const SizedBox(height: 14),
+                            GestureDetector(
+                              onTap: widget.onGoToPremium,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 11,
+                                  horizontal: 16,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(14),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.12),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 3),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(5),
+                                      decoration: BoxDecoration(
+                                        gradient: const LinearGradient(
+                                          colors: [
+                                            Color(0xFFFFD700),
+                                            Color(0xFFF97316),
+                                          ],
+                                        ),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Icon(
+                                        Icons.star_rounded,
+                                        color: Colors.white,
+                                        size: 15,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    const Text(
+                                      'Passer au Premium',
+                                      style: TextStyle(
+                                        color: Color(0xFFEA580C),
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      'À partir de 1 000 FCFA/mois',
+                                      style: TextStyle(
+                                        color: AppTheme.gray400,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    const Icon(
+                                      Icons.arrow_forward_ios_rounded,
+                                      color: Color(0xFFEA580C),
+                                      size: 13,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -385,7 +458,6 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
         ),
       ),
-      // Titre affiché quand l'AppBar est réduit (scrollé)
       title: Text(
         _user?.fullName ?? 'Dashboard',
         style: const TextStyle(
@@ -398,11 +470,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  /// Badge "⭐ Premium" ou "Gratuit" affiché sous le nom
   Widget _buildAccountTypeBadge() {
     final isPremium =
         _premiumStatus?.isPremium ?? _user?.isPremiumActive ?? false;
-
     if (isPremium) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -428,14 +498,12 @@ class _DashboardScreenState extends State<DashboardScreen>
                 color: Colors.white,
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 0.2,
               ),
             ),
           ],
         ),
       );
     }
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
@@ -461,7 +529,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  /// Avatar avec indicateur de statut (point vert = en ligne)
   Widget _buildAvatar() {
     final avatarUrl = _user?.avatarUrl;
     return Stack(
@@ -493,7 +560,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                 : _avatarPlaceholder(),
           ),
         ),
-        // Indicateur en ligne (point vert en bas à droite)
         Positioned(
           bottom: 2,
           right: 2,
@@ -528,7 +594,15 @@ class _DashboardScreenState extends State<DashboardScreen>
   // ── Stats ─────────────────────────────────────────────────────────────────
 
   Widget _buildStatsSection() {
-    if (_loadingStats) return _buildStatsLoading();
+    if (_loadingStats) {
+      return Row(
+        children: [
+          Expanded(child: _SkeletonCard(height: 90)),
+          const SizedBox(width: 12),
+          Expanded(child: _SkeletonCard(height: 90)),
+        ],
+      );
+    }
     return Column(
       children: [
         Row(
@@ -586,14 +660,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Widget _buildStatsLoading() => Row(
-    children: [
-      Expanded(child: _SkeletonCard(height: 90)),
-      const SizedBox(width: 12),
-      Expanded(child: _SkeletonCard(height: 90)),
-    ],
-  );
-
   Widget _buildSectionTitle(String title) => Row(
     children: [
       Container(
@@ -617,12 +683,55 @@ class _DashboardScreenState extends State<DashboardScreen>
     ],
   );
 
-  // ── Actions rapides ───────────────────────────────────────────────────────
+  // ── Actions Annonces ──────────────────────────────────────────────────────
 
-  Widget _buildQuickActions() {
+  Widget _buildAnnoncesActions() {
     return FadeTransition(
       opacity: _cardAnims.length > 4
           ? _cardAnims[4]
+          : const AlwaysStoppedAnimation(1),
+      child: Row(
+        children: [
+          Expanded(
+            child: _QuickActionTile(
+              icon: Icons.add_circle_outline_rounded,
+              label: 'Nouvelle\nAnnonce',
+              gradient: const LinearGradient(
+                colors: [Color(0xFFF97316), Color(0xFFEA6D0A)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              badge: _stats.remainingAds > 0
+                  ? '${_stats.remainingAds} restant${_stats.remainingAds > 1 ? 's' : ''}'
+                  : null,
+              onTap: widget.onGoToNewAd,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _QuickActionTile(
+              icon: Icons.view_list_rounded,
+              label: 'Mes\nAnnonces',
+              gradient: const LinearGradient(
+                colors: [Color(0xFF22C55E), Color(0xFF15803D)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              badge: _stats.totalAds > 0 ? '${_stats.totalAds}' : null,
+              onTap: widget.onGoToMyAds,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Actions Magasins ──────────────────────────────────────────────────────
+
+  Widget _buildMagasinsActions() {
+    return FadeTransition(
+      opacity: _cardAnims.length > 5
+          ? _cardAnims[5]
           : const AlwaysStoppedAnimation(1),
       child: Column(
         children: [
@@ -630,65 +739,96 @@ class _DashboardScreenState extends State<DashboardScreen>
             children: [
               Expanded(
                 child: _QuickActionTile(
-                  icon: Icons.add_circle_outline_rounded,
-                  label: 'Nouvelle\nAnnonce',
+                  icon: Icons.storefront_outlined,
+                  label: 'Nouveau\nMagasin',
                   gradient: const LinearGradient(
-                    colors: [Color(0xFFF97316), Color(0xFFEA6D0A)],
+                    colors: [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  badge: _stats.remainingAds > 0
-                      ? '${_stats.remainingAds} restant${_stats.remainingAds > 1 ? 's' : ''}'
-                      : null,
-                  onTap: widget.onGoToNewAd,
+                  onTap: widget.onGoToNewMagasin,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: _QuickActionTile(
-                  icon: Icons.view_list_rounded,
-                  label: 'Mes\nAnnonces',
+                  icon: Icons.store_rounded,
+                  label: 'Mes\nMagasins',
                   gradient: const LinearGradient(
-                    colors: [Color(0xFF22C55E), Color(0xFF15803D)],
+                    colors: [Color(0xFF06B6D4), Color(0xFF0284C7)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  badge: _stats.totalAds > 0 ? '${_stats.totalAds}' : null,
-                  onTap: widget.onGoToMyAds,
+                  onTap: widget.onGoToMyMagasins,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _QuickActionTile(
-                  icon: Icons.person_outline_rounded,
-                  label: 'Mon\nProfil',
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  onTap: widget.onGoToProfile,
+          // Bannière Explorer les marchés
+          GestureDetector(
+            onTap: widget.onGoToMyMagasins,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFF97316), Color(0xFF22C55E)],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _QuickActionTile(
-                  icon: Icons.star_rounded,
-                  label: 'Premium\n⭐',
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFFD700), Color(0xFFF97316)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.primaryOrange.withOpacity(0.25),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
                   ),
-                  badge: (_premiumStatus?.isPremium ?? false) ? 'Actif' : null,
-                  onTap: widget.onGoToPremium,
-                ),
+                ],
               ),
-            ],
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.map_outlined,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Explorer les marchés',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 14,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Boutiques & points de vente près de vous',
+                          style: TextStyle(color: Colors.white70, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    color: Colors.white70,
+                    size: 14,
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -706,8 +846,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   Widget _buildPremiumActiveBadge() {
     final sub = _premiumStatus?.activeSubscription;
     return FadeTransition(
-      opacity: _cardAnims.length > 5
-          ? _cardAnims[5]
+      opacity: _cardAnims.length > 6
+          ? _cardAnims[6]
           : const AlwaysStoppedAnimation(1),
       child: Container(
         padding: const EdgeInsets.all(20),
@@ -760,11 +900,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       SizedBox(height: 4),
                       Text(
                         'Annonces illimitées · Priorité affichage',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w400,
-                        ),
+                        style: TextStyle(color: Colors.white, fontSize: 13),
                       ),
                     ],
                   ),
@@ -816,8 +952,8 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Widget _buildFreeAccountCard() {
     return FadeTransition(
-      opacity: _cardAnims.length > 5
-          ? _cardAnims[5]
+      opacity: _cardAnims.length > 6
+          ? _cardAnims[6]
           : const AlwaysStoppedAnimation(1),
       child: Container(
         padding: const EdgeInsets.all(20),
@@ -895,35 +1031,10 @@ class _DashboardScreenState extends State<DashboardScreen>
               ),
             ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                _PremiumFeatureChip(
-                  icon: Icons.all_inclusive_rounded,
-                  label: 'Illimité',
-                  color: AppTheme.successGreen,
-                ),
-                const SizedBox(width: 8),
-                _PremiumFeatureChip(
-                  icon: Icons.trending_up_rounded,
-                  label: 'Prioritaire',
-                  color: AppTheme.infoBlue,
-                ),
-                const SizedBox(width: 8),
-                _PremiumFeatureChip(
-                  icon: Icons.verified_rounded,
-                  label: 'Vérifié',
-                  color: const Color(0xFF8B5CF6),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
             GestureDetector(
               onTap: widget.onGoToPremium,
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 14,
-                  horizontal: 20,
-                ),
+                padding: const EdgeInsets.symmetric(vertical: 14),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [Color(0xFFF97316), Color(0xFFFFAB40)],
@@ -978,7 +1089,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  // ── Activité récente (données réelles) ────────────────────────────────────
+  // ── Activité récente ──────────────────────────────────────────────────────
 
   Widget _buildRecentActivity() {
     if (_loadingStats) {
@@ -988,7 +1099,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
     if (_stats.totalAds == 0) return _buildEmptyActivity();
 
-    // Affiche un message invitant à consulter "Mes annonces" pour les détails réels
     return GestureDetector(
       onTap: widget.onGoToMyAds,
       child: Container(
@@ -1161,45 +1271,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   );
 }
 
-// ─── Chip avantage premium ────────────────────────────────────────────────────
-
-class _PremiumFeatureChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  const _PremiumFeatureChip({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-    decoration: BoxDecoration(
-      color: color.withOpacity(0.1),
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: color.withOpacity(0.25)),
-    ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: color, size: 12),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: TextStyle(
-            color: color,
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-// ─── Carte stat animée ────────────────────────────────────────────────────────
+// ─── Widgets réutilisables ────────────────────────────────────────────────────
 
 class _AnimatedStatCard extends StatelessWidget {
   final Animation<double> animation;
@@ -1287,8 +1359,6 @@ class _AnimatedStatCard extends StatelessWidget {
   }
 }
 
-// ─── Tuile action rapide ──────────────────────────────────────────────────────
-
 class _QuickActionTile extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -1371,8 +1441,6 @@ class _QuickActionTile extends StatelessWidget {
     ),
   );
 }
-
-// ─── Sheet déconnexion ────────────────────────────────────────────────────────
 
 class _LogoutSheet extends StatelessWidget {
   final VoidCallback onConfirm;
@@ -1502,8 +1570,6 @@ class _LogoutSheet extends StatelessWidget {
     );
   }
 }
-
-// ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 class _SkeletonCard extends StatefulWidget {
   final double height;

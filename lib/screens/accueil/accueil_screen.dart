@@ -1,8 +1,4 @@
 // lib/screens/accueil/accueil_screen.dart
-//
-// Les annonces en vedette et urgentes sont rafraîchies toutes les 10 secondes
-// en parallèle avec le backend (même seed temporel → même lot).
-// Un AnimatedSwitcher assure une transition fluide entre les lots.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -10,12 +6,12 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../config/app_theme.dart';
 import '../../models/annonce.dart';
+import '../../models/magasin.dart';
 import '../../models/user.dart';
 import '../../services/auth_service.dart';
 import '../../services/annonce_service.dart';
+import '../../services/magasin_service.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-
-// ── Catégories statiques (icônes/couleurs locales) ───────────────────────────
 
 class _CategoryItem {
   final String icon;
@@ -30,7 +26,16 @@ class _CategoryItem {
   });
 }
 
-// ── Écran Accueil ─────────────────────────────────────────────────────────────
+const _marcheColors = [
+  [Color(0xFFF97316), Color(0xFFEA580C)],
+  [Color(0xFF22C55E), Color(0xFF15803D)],
+  [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
+  [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
+  [Color(0xFFEC4899), Color(0xFFBE185D)],
+  [Color(0xFF14B8A6), Color(0xFF0F766E)],
+  [Color(0xFFF59E0B), Color(0xFFB45309)],
+  [Color(0xFF06B6D4), Color(0xFF0E7490)],
+];
 
 class AccueilScreen extends StatefulWidget {
   final VoidCallback? onGoToDashboard;
@@ -40,6 +45,9 @@ class AccueilScreen extends StatefulWidget {
   final Function(String adId)? onGoToAdDetail;
   final Function(String category)? onGoToCategory;
   final VoidCallback? onGoToNewAd;
+  final Function(int magasinId)? onGoToMagasin;
+  final VoidCallback? onGoToMagasins;
+  final Function(String marcheValue)? onGoToMagasinsByMarche;
 
   const AccueilScreen({
     super.key,
@@ -50,6 +58,9 @@ class AccueilScreen extends StatefulWidget {
     this.onGoToAdDetail,
     this.onGoToCategory,
     this.onGoToNewAd,
+    this.onGoToMagasin,
+    this.onGoToMagasins,
+    this.onGoToMagasinsByMarche,
   });
 
   @override
@@ -65,14 +76,21 @@ class _AccueilScreenState extends State<AccueilScreen>
   bool _avatarError = false;
   String? _errorMessage;
 
-  // Données initiales (chargement complet)
   List<Ad> _featuredAds = [];
   List<Ad> _urgentAds = [];
   List<Ad> _recentAds = [];
-
-  // ── Rotation toutes les 10 s ──────────────────────────────────────────────
-  // On conserve une "clé" d'animation pour AnimatedSwitcher
   int _rotationKey = 0;
+
+  List<Magasin> _allMagasins = [];
+  List<Magasin> _displayedMagasins = [];
+  int _magasinIndex = 0;
+  int _magasinKey = 0;
+
+  List<MarcheGroup> _marcheGroups = [];
+  MarcheGroup? _currentMarcheGroup;
+  int _marcheIndex = 0;
+  int _marcheKey = 0;
+
   Timer? _rotationTimer;
   static const _rotationInterval = Duration(seconds: 10);
 
@@ -86,12 +104,6 @@ class _AccueilScreenState extends State<AccueilScreen>
       value: 'vehicules',
       color: Color(0xFFEF4444),
     ),
-    // _CategoryItem(
-    //   icon: '💼',
-    //   name: 'Emploi',
-    //   value: 'emploi_stages',
-    //   color: Color(0xFFEAB308),
-    // ),
     _CategoryItem(
       icon: '🏠',
       name: 'Immobilier',
@@ -122,12 +134,6 @@ class _AccueilScreenState extends State<AccueilScreen>
       value: 'sport_loisirs',
       color: Color(0xFFF97316),
     ),
-    // _CategoryItem(
-    //   icon: '🔧',
-    //   name: 'Services',
-    //   value: 'services',
-    //   color: Color(0xFF8B5CF6),
-    // ),
     _CategoryItem(
       icon: '🌾',
       name: 'Agro',
@@ -164,7 +170,7 @@ class _AccueilScreenState extends State<AccueilScreen>
     super.dispose();
   }
 
-  // ─── Chargement initial complet ────────────────────────────────────────────
+  // ─── Chargement ─────────────────────────────────────────────────────────────
 
   Future<void> _loadData() async {
     setState(() {
@@ -172,66 +178,95 @@ class _AccueilScreenState extends State<AccueilScreen>
       _errorMessage = null;
     });
     _user = AuthService().currentUser;
-
     try {
-      final homeData = await AnnonceService().getHomeData();
+      final results = await Future.wait([
+        AnnonceService().getHomeData(),
+        MagasinService().getMagasins().catchError((_) => <Magasin>[]),
+        MagasinService().getMarchesGrouped().catchError((_) => <MarcheGroup>[]),
+      ]);
+      final homeData = results[0] as HomeData;
+      final magasins = results[1] as List<Magasin>;
+      final marcheGrp = results[2] as List<MarcheGroup>;
       if (mounted) {
         setState(() {
           _featuredAds = homeData.featuredAds;
           _urgentAds = homeData.urgentAds;
           _recentAds = homeData.recentAds;
+          _allMagasins = magasins;
+          _marcheGroups = marcheGrp;
+          if (_marcheGroups.isNotEmpty) _currentMarcheGroup = _marcheGroups[0];
+          _rotateMagasins(init: true);
           _loading = false;
         });
         _fadeCtrl.forward(from: 0);
         _startRotationTimer();
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted)
         setState(() {
           _loading = false;
           _errorMessage = e.toString().replaceFirst('Exception: ', '');
         });
-      }
     }
   }
 
-  // ─── Timer de rotation toutes les 10 s ────────────────────────────────────
+  // ─── Timers de rotation ──────────────────────────────────────────────────────
 
   void _startRotationTimer() {
     _rotationTimer?.cancel();
     _rotationTimer = Timer.periodic(_rotationInterval, (_) {
       _fetchRotatedAds();
+      _rotateMagasins();
+      _rotateMarches();
     });
   }
 
-  /// Appelle home-data et ne met à jour QUE les sections rotatives
-  /// (featured + urgent). Les annonces récentes ne changent pas.
   Future<void> _fetchRotatedAds() async {
     if (!mounted) return;
     try {
       final homeData = await AnnonceService().getHomeData();
-      if (mounted) {
+      if (mounted)
         setState(() {
           _featuredAds = homeData.featuredAds;
           _urgentAds = homeData.urgentAds;
-          // Incrémenter la clé pour déclencher AnimatedSwitcher
           _rotationKey++;
         });
-      }
-    } catch (_) {
-      // Silencieux : on conserve les données précédentes
-    }
+    } catch (_) {}
   }
 
-  // ─── Refresh manuel (pull-to-refresh) ─────────────────────────────────────
+  void _rotateMagasins({bool init = false}) {
+    if (_allMagasins.isEmpty) return;
+    final total = _allMagasins.length;
+    final start = _magasinIndex % total;
+    final shown = List<Magasin>.generate(
+      total < 4 ? total : 4,
+      (i) => _allMagasins[(start + i) % total],
+    );
+    setState(() {
+      _displayedMagasins = shown;
+      _magasinIndex = (start + 4) % total;
+      if (!init) _magasinKey++;
+    });
+  }
+
+  void _rotateMarches() {
+    if (_marcheGroups.isEmpty) return;
+    setState(() {
+      _marcheIndex = (_marcheIndex + 1) % _marcheGroups.length;
+      _currentMarcheGroup = _marcheGroups[_marcheIndex];
+      _marcheKey++;
+    });
+  }
 
   Future<void> _onRefresh() async {
     _rotationTimer?.cancel();
     _fadeCtrl.reset();
+    _magasinIndex = 0;
+    _marcheIndex = 0;
     await _loadData();
   }
 
-  // ─── Contacts ─────────────────────────────────────────────────────────────
+  // ─── Contacts ───────────────────────────────────────────────────────────────
 
   Future<void> _launchWhatsApp(Ad ad) async {
     final phone = ad.contactWhatsApp;
@@ -256,14 +291,13 @@ class _AccueilScreenState extends State<AccueilScreen>
   Future<void> _launchSms(Ad ad) async {
     final phone = ad.contactPhone;
     if (phone == null) return;
-    final msg = Uri.encodeComponent(
-      'Bonjour, je suis intéressé(e) par: ${ad.title}',
+    final uri = Uri.parse(
+      'sms:$phone?body=${Uri.encodeComponent("Bonjour, je suis intéressé(e) par: ${ad.title}")}',
     );
-    final uri = Uri.parse('sms:$phone?body=$msg');
     if (await canLaunchUrl(uri)) await launchUrl(uri);
   }
 
-  // ─── Build ─────────────────────────────────────────────────────────────────
+  // ─── Build principal ────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -294,14 +328,13 @@ class _AccueilScreenState extends State<AccueilScreen>
                   ),
                 )
               else ...[
-                // ── Section vedette avec AnimatedSwitcher ────────────────────
                 if (_featuredAds.isNotEmpty)
                   SliverToBoxAdapter(child: _buildFeaturedSection()),
-
-                // ── Section récentes (fixes) ──────────────────────────────────
-                if (_recentAds.isNotEmpty)
-                  // SliverToBoxAdapter(child: _buildRecentSection()),
-                  SliverToBoxAdapter(child: _buildCategoriesSection()),
+                SliverToBoxAdapter(child: _buildCategoriesSection()),
+                if (_displayedMagasins.isNotEmpty)
+                  SliverToBoxAdapter(child: _buildMagasinsSection()),
+                if (_currentMarcheGroup != null)
+                  SliverToBoxAdapter(child: _buildMarchesSection()),
                 SliverToBoxAdapter(child: _buildFeaturesSection()),
                 if (_user == null)
                   SliverToBoxAdapter(child: _buildRegisterCTA()),
@@ -315,7 +348,7 @@ class _AccueilScreenState extends State<AccueilScreen>
     );
   }
 
-  // ── Top Bar ────────────────────────────────────────────────────────────────
+  // ─── Top Bar ────────────────────────────────────────────────────────────────
 
   Widget _buildTopBar() {
     return SliverAppBar(
@@ -394,7 +427,7 @@ class _AccueilScreenState extends State<AccueilScreen>
     );
   }
 
-  // ── Barre de recherche ─────────────────────────────────────────────────────
+  // ─── Barre de recherche ─────────────────────────────────────────────────────
 
   Widget _buildSearchBar() {
     return Container(
@@ -435,7 +468,7 @@ class _AccueilScreenState extends State<AccueilScreen>
     );
   }
 
-  // ── CTA Publier ────────────────────────────────────────────────────────────
+  // ─── CTA Publier ────────────────────────────────────────────────────────────
 
   Widget _buildPublishCTA() {
     return Container(
@@ -484,7 +517,7 @@ class _AccueilScreenState extends State<AccueilScreen>
     );
   }
 
-  // ── Section Vedette (avec AnimatedSwitcher pour la rotation) ───────────────
+  // ─── Section Vedette ────────────────────────────────────────────────────────
 
   Widget _buildFeaturedSection() {
     return FadeTransition(
@@ -500,7 +533,6 @@ class _AccueilScreenState extends State<AccueilScreen>
               onSeeAll: () => widget.onGoToCategory?.call(''),
             ),
             const SizedBox(height: 14),
-            // AnimatedSwitcher : fondu entre l'ancien et le nouveau lot
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 600),
               switchInCurve: Curves.easeIn,
@@ -508,7 +540,6 @@ class _AccueilScreenState extends State<AccueilScreen>
               transitionBuilder: (child, animation) =>
                   FadeTransition(opacity: animation, child: child),
               child: KeyedSubtree(
-                // La clé change à chaque rotation → AnimatedSwitcher se déclenche
                 key: ValueKey('featured_$_rotationKey'),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -535,8 +566,6 @@ class _AccueilScreenState extends State<AccueilScreen>
                 ),
               ),
             ),
-
-            // Indicateur de rotation (barre de progression animée)
             const SizedBox(height: 12),
             _RotationIndicator(
               interval: _rotationInterval,
@@ -548,50 +577,7 @@ class _AccueilScreenState extends State<AccueilScreen>
     );
   }
 
-  // // ── Section Récentes (fixes) ───────────────────────────────────────────────
-
-  // Widget _buildRecentSection() {
-  //   return FadeTransition(
-  //     opacity: _fadeAnim,
-  //     child: Padding(
-  //       padding: const EdgeInsets.only(top: 24),
-  //       child: Column(
-  //         crossAxisAlignment: CrossAxisAlignment.start,
-  //         children: [
-  //           _SectionHeader(
-  //             title: 'Annonces Récentes',
-  //             subtitle: 'Publiées ces dernières heures',
-  //             onSeeAll: () => widget.onGoToCategory?.call(''),
-  //           ),
-  //           const SizedBox(height: 14),
-  //           Padding(
-  //             padding: const EdgeInsets.symmetric(horizontal: 16),
-  //             child: GridView.builder(
-  //               shrinkWrap: true,
-  //               physics: const NeverScrollableScrollPhysics(),
-  //               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-  //                 crossAxisCount: 2,
-  //                 childAspectRatio: 0.72,
-  //                 crossAxisSpacing: 12,
-  //                 mainAxisSpacing: 12,
-  //               ),
-  //               itemCount: _recentAds.length.clamp(0, 6),
-  //               itemBuilder: (_, i) => _AdGridCard(
-  //                 ad: _recentAds[i],
-  //                 onTap: () => widget.onGoToAdDetail?.call(_recentAds[i].id),
-  //                 onWhatsApp: () => _launchWhatsApp(_recentAds[i]),
-  //                 onCall: () => _launchCall(_recentAds[i]),
-  //                 onSms: () => _launchSms(_recentAds[i]),
-  //               ),
-  //             ),
-  //           ),
-  //         ],
-  //       ),
-  //     ),
-  //   );
-  // }
-
-  // ── Section Catégories ─────────────────────────────────────────────────────
+  // ─── Section Catégories ─────────────────────────────────────────────────────
 
   Widget _buildCategoriesSection() {
     return FadeTransition(
@@ -631,11 +617,371 @@ class _AccueilScreenState extends State<AccueilScreen>
     );
   }
 
-  // ── Section Avantages ──────────────────────────────────────────────────────
+  // ══ NOS MAGASINS ════════════════════════════════════════════════════════════
+
+  Widget _buildMagasinsSection() {
+    return Container(
+      margin: const EdgeInsets.only(top: 28),
+      padding: const EdgeInsets.fromLTRB(0, 24, 0, 20),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFFFFF7ED), Color(0xFFFEF3C7)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFF97316), Color(0xFF22C55E)],
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.storefront_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Nos Magasins',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: AppTheme.gray900,
+                        ),
+                      ),
+                      Text(
+                        '${_allMagasins.length} boutique(s) · rotation toutes les 10 s',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppTheme.gray500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  onTap: widget.onGoToMagasins,
+                  child: const Row(
+                    children: [
+                      Text(
+                        'Tous les magasins',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.primaryOrange,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      SizedBox(width: 4),
+                      Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        color: AppTheme.primaryOrange,
+                        size: 11,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 600),
+            transitionBuilder: (child, animation) =>
+                FadeTransition(opacity: animation, child: child),
+            child: KeyedSubtree(
+              key: ValueKey('magasins_$_magasinKey'),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    childAspectRatio: 1.05,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                  ),
+                  itemCount: _displayedMagasins.length,
+                  itemBuilder: (_, i) => _MagasinCard(
+                    magasin: _displayedMagasins[i],
+                    onTap: () =>
+                        widget.onGoToMagasin?.call(_displayedMagasins[i].id),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _RotationIndicator(
+            interval: _rotationInterval,
+            key: ValueKey('rm_$_magasinKey'),
+            label: '🏪 Boutiques actualisées toutes les 10 s',
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ══ NOS MARCHÉS ═════════════════════════════════════════════════════════════
+
+  Widget _buildMarchesSection() {
+    final group = _currentMarcheGroup!;
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(0, 24, 0, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // En-tête
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF22C55E), Color(0xFF14B8A6)],
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.location_city_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Nos Marchés',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: AppTheme.gray900,
+                        ),
+                      ),
+                      Text(
+                        '${_marcheGroups.length} ville(s) répertoriée(s)',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppTheme.gray500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  onTap: widget.onGoToMagasins,
+                  child: const Row(
+                    children: [
+                      Text(
+                        'Voir les magasins',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF22C55E),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      SizedBox(width: 4),
+                      Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        color: Color(0xFF22C55E),
+                        size: 11,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Corps animé
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 600),
+            transitionBuilder: (child, animation) =>
+                FadeTransition(opacity: animation, child: child),
+            child: KeyedSubtree(
+              key: ValueKey('marche_$_marcheKey'),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    // Bannière ville courante
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF22C55E), Color(0xFF14B8A6)],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF22C55E).withOpacity(0.25),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.location_on_rounded,
+                              color: Colors.white,
+                              size: 26,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  group.villeLabel,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                Text(
+                                  '${group.marches.length} marché(s) répertorié(s)',
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Indicateur progression
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              const Text(
+                                'Prochaine ville',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 9,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              SizedBox(
+                                width: 60,
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: const LinearProgressIndicator(
+                                    minHeight: 3,
+                                    backgroundColor: Color(0x33FFFFFF),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Grille des marchés de la ville courante
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        childAspectRatio:
+                            2.3, // ratio ajusté pour afficher 2 lignes de texte
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 10,
+                      ),
+                      itemCount: group.marches.length,
+                      itemBuilder: (_, i) => _MarcheCard(
+                        marche: group.marches[i],
+                        villeLabel: group.villeLabel,
+                        colorPair: _marcheColors[i % _marcheColors.length],
+                        onTap: () => widget.onGoToMagasinsByMarche != null
+                            ? widget.onGoToMagasinsByMarche!.call(
+                                group.marches[i].value,
+                              )
+                            : widget.onGoToMagasins?.call(),
+                      ),
+                    ),
+                    // Points de navigation inter-villes
+                    if (_marcheGroups.length > 1) ...[
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(_marcheGroups.length, (i) {
+                          final active = _marcheGroups[i].ville == group.ville;
+                          return GestureDetector(
+                            onTap: () => setState(() {
+                              _marcheIndex = i;
+                              _currentMarcheGroup = _marcheGroups[i];
+                              _marcheKey++;
+                            }),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 250),
+                              width: active ? 20 : 8,
+                              height: 8,
+                              margin: const EdgeInsets.symmetric(horizontal: 3),
+                              decoration: BoxDecoration(
+                                color: active
+                                    ? const Color(0xFF22C55E)
+                                    : AppTheme.gray200,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
+                          );
+                        }),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Section Avantages ──────────────────────────────────────────────────────
 
   Widget _buildFeaturesSection() {
     return Container(
-      margin: const EdgeInsets.only(top: 28),
+      margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.fromLTRB(16, 28, 16, 28),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -691,7 +1037,7 @@ class _AccueilScreenState extends State<AccueilScreen>
     );
   }
 
-  // ── CTA Register ───────────────────────────────────────────────────────────
+  // ─── CTA Register ───────────────────────────────────────────────────────────
 
   Widget _buildRegisterCTA() {
     return Container(
@@ -758,7 +1104,7 @@ class _AccueilScreenState extends State<AccueilScreen>
     );
   }
 
-  // ── Bottom Nav ─────────────────────────────────────────────────────────────
+  // ─── Bottom Nav ─────────────────────────────────────────────────────────────
 
   Widget _buildBottomNav() {
     return Container(
@@ -775,7 +1121,7 @@ class _AccueilScreenState extends State<AccueilScreen>
       ),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
@@ -814,9 +1160,9 @@ class _AccueilScreenState extends State<AccueilScreen>
                 ),
               ),
               _BottomNavItem(
-                icon: Icons.list_alt_rounded,
-                label: 'Annonces',
-                onTap: () => widget.onGoToCategory?.call(''),
+                icon: Icons.storefront_rounded,
+                label: 'Magasins',
+                onTap: widget.onGoToMagasins,
               ),
               _BottomNavItem(
                 icon: _user != null
@@ -835,14 +1181,335 @@ class _AccueilScreenState extends State<AccueilScreen>
   }
 }
 
-// ─── Indicateur de rotation (barre de progression) ────────────────────────────
-//
-// S'anime de 0 → 100 % sur la durée du slot, puis repart à 0 au prochain lot.
+// ══════════════════════════════════════════════════════════════════════════════
+// Carte Magasin
+// ══════════════════════════════════════════════════════════════════════════════
+
+class _MagasinCard extends StatelessWidget {
+  final Magasin magasin;
+  final VoidCallback onTap;
+  const _MagasinCard({required this.magasin, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFFED7AA), width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.07),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  height: 56,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFFF97316), Color(0xFF22C55E)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(16),
+                    ),
+                  ),
+                ),
+                if (magasin.isVerified)
+                  Positioned(
+                    top: 6,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.verified,
+                            color: Color(0xFF22C55E),
+                            size: 9,
+                          ),
+                          SizedBox(width: 2),
+                          Text(
+                            'Vérifié',
+                            style: TextStyle(
+                              color: Color(0xFF22C55E),
+                              fontSize: 8,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                Positioned(
+                  left: 10,
+                  bottom: -18,
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(9),
+                      border: Border.all(color: Colors.white, width: 2.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.12),
+                          blurRadius: 6,
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(7),
+                      child: magasin.logoAbsoluteUrl != null
+                          ? Image.network(
+                              magasin.logoAbsoluteUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => _initials(),
+                            )
+                          : _initials(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 22, 10, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      magasin.nom,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                        color: AppTheme.gray900,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      magasin.categorieDisplay,
+                      style: const TextStyle(
+                        fontSize: 9,
+                        color: AppTheme.primaryOrange,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const Spacer(),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.location_on_outlined,
+                          size: 10,
+                          color: AppTheme.gray400,
+                        ),
+                        const SizedBox(width: 2),
+                        Expanded(
+                          child: Text(
+                            magasin.villeDisplay,
+                            style: const TextStyle(
+                              fontSize: 9,
+                              color: AppTheme.gray500,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '${magasin.nbAnnonces} ann.',
+                          style: const TextStyle(
+                            fontSize: 9,
+                            color: AppTheme.gray500,
+                          ),
+                        ),
+                        const Row(
+                          children: [
+                            Text(
+                              'Voir',
+                              style: TextStyle(
+                                fontSize: 9,
+                                color: AppTheme.primaryOrange,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Icon(
+                              Icons.arrow_forward_ios,
+                              size: 7,
+                              color: AppTheme.primaryOrange,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _initials() => Container(
+    color: AppTheme.primaryOrangeLight,
+    child: Center(
+      child: Text(
+        magasin.initials,
+        style: const TextStyle(
+          color: AppTheme.primaryOrange,
+          fontWeight: FontWeight.w800,
+          fontSize: 13,
+        ),
+      ),
+    ),
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Carte Marché  — barre gauche 36 px, texte fontSize 11, maxLines 2
+// ══════════════════════════════════════════════════════════════════════════════
+
+class _MarcheCard extends StatelessWidget {
+  final Marche marche;
+  final String villeLabel;
+  final List<Color> colorPair;
+  final VoidCallback onTap;
+  const _MarcheCard({
+    required this.marche,
+    required this.villeLabel,
+    required this.colorPair,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.gray200),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // Barre colorée réduite à 36 px pour libérer de l'espace texte
+            Container(
+              width: 36,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: colorPair,
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+                borderRadius: const BorderRadius.horizontal(
+                  left: Radius.circular(12),
+                ),
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.store_mall_directory_outlined,
+                  color: Colors.white,
+                  size: 17,
+                ),
+              ),
+            ),
+            // Zone texte — occupe tout l'espace restant
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      marche.label,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11,
+                        color: AppTheme.gray900,
+                        height: 1.2,
+                      ),
+                      maxLines: 2, // autorise le retour à la ligne
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      villeLabel,
+                      style: const TextStyle(
+                        fontSize: 9,
+                        color: AppTheme.gray500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Icon(
+                Icons.arrow_forward_ios,
+                size: 9,
+                color: colorPair[0],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Indicateur de rotation
+// ══════════════════════════════════════════════════════════════════════════════
 
 class _RotationIndicator extends StatefulWidget {
   final Duration interval;
-  const _RotationIndicator({super.key, required this.interval});
-
+  final String label;
+  const _RotationIndicator({
+    super.key,
+    required this.interval,
+    this.label = '🔄 Sélection actualisée toutes les 10 s',
+  });
   @override
   State<_RotationIndicator> createState() => _RotationIndicatorState();
 }
@@ -850,7 +1517,6 @@ class _RotationIndicator extends StatefulWidget {
 class _RotationIndicatorState extends State<_RotationIndicator>
     with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
-
   @override
   void initState() {
     super.initState();
@@ -886,9 +1552,9 @@ class _RotationIndicatorState extends State<_RotationIndicator>
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
-            '🔄 Sélection actualisée toutes les 10 s',
-            style: TextStyle(fontSize: 10, color: AppTheme.gray400),
+          Text(
+            widget.label,
+            style: const TextStyle(fontSize: 10, color: AppTheme.gray400),
           ),
         ],
       ),
@@ -896,21 +1562,21 @@ class _RotationIndicatorState extends State<_RotationIndicator>
   }
 }
 
-// ─── Widgets réutilisables ────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// Widgets réutilisables
+// ══════════════════════════════════════════════════════════════════════════════
 
 class _SectionHeader extends StatelessWidget {
   final String title;
   final String subtitle;
   final Color? titleColor;
   final VoidCallback? onSeeAll;
-
   const _SectionHeader({
     required this.title,
     required this.subtitle,
     this.titleColor,
     this.onSeeAll,
   });
-
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -965,7 +1631,6 @@ class _SectionHeader extends StatelessWidget {
 class _AdGridCard extends StatelessWidget {
   final Ad ad;
   final VoidCallback onTap, onWhatsApp, onCall, onSms;
-
   const _AdGridCard({
     required this.ad,
     required this.onTap,
@@ -973,7 +1638,6 @@ class _AdGridCard extends StatelessWidget {
     required this.onCall,
     required this.onSms,
   });
-
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -1127,7 +1791,6 @@ class _CategoryCell extends StatelessWidget {
   final _CategoryItem item;
   final VoidCallback onTap;
   const _CategoryCell({required this.item, required this.onTap});
-
   @override
   Widget build(BuildContext context) => GestureDetector(
     onTap: onTap,
@@ -1184,7 +1847,6 @@ class _FeatureCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
   });
-
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(14),
@@ -1241,7 +1903,6 @@ class _FeatureCard extends StatelessWidget {
 class _AdImage extends StatelessWidget {
   final String url;
   const _AdImage({required this.url});
-
   @override
   Widget build(BuildContext context) {
     if (url.isEmpty) return _placeholder();
@@ -1290,7 +1951,6 @@ class _Badge extends StatelessWidget {
     required this.color,
     this.compact = false,
   });
-
   @override
   Widget build(BuildContext context) => Container(
     padding: EdgeInsets.symmetric(
@@ -1318,7 +1978,6 @@ class _SmallContactBtn extends StatelessWidget {
   final Color color;
   final VoidCallback onTap;
   final int flex;
-
   const _SmallContactBtn({
     this.icon,
     this.faIcon,
@@ -1326,7 +1985,6 @@ class _SmallContactBtn extends StatelessWidget {
     required this.onTap,
     this.flex = 1,
   }) : assert(icon != null || faIcon != null);
-
   @override
   Widget build(BuildContext context) => Expanded(
     flex: flex,
@@ -1352,7 +2010,6 @@ class _TopAvatar extends StatelessWidget {
   final User user;
   final bool avatarError;
   const _TopAvatar({required this.user, required this.avatarError});
-
   @override
   Widget build(BuildContext context) {
     final fn = user.firstName?.isNotEmpty == true ? user.firstName![0] : '';
@@ -1419,7 +2076,6 @@ class _TopBtn extends StatelessWidget {
   final Color color;
   final VoidCallback? onTap;
   const _TopBtn({required this.label, required this.color, this.onTap});
-
   @override
   Widget build(BuildContext context) => GestureDetector(
     onTap: onTap,
@@ -1453,7 +2109,6 @@ class _CTAButton extends StatelessWidget {
     required this.textColor,
     this.onTap,
   });
-
   @override
   Widget build(BuildContext context) => GestureDetector(
     onTap: onTap,
@@ -1493,7 +2148,6 @@ class _BottomNavItem extends StatelessWidget {
     this.active = false,
     this.onTap,
   });
-
   @override
   Widget build(BuildContext context) {
     final color = active ? AppTheme.primaryOrange : AppTheme.gray400;
@@ -1539,7 +2193,6 @@ class _ErrorState extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
   const _ErrorState({required this.message, required this.onRetry});
-
   @override
   Widget build(BuildContext context) => Column(
     mainAxisAlignment: MainAxisAlignment.center,
