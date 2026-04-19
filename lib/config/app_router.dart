@@ -19,6 +19,7 @@ import '../screens/magasin/list_magasin_screen.dart';
 import '../screens/magasin/detail_magasin_screen.dart';
 import '../screens/magasin/my_magasin_screen.dart';
 import '../screens/magasin/new_magasin_screen.dart';
+import '../screens/magasin/list_marche_screen.dart';
 
 class AppRouter {
   static const _publicPaths = [
@@ -30,6 +31,7 @@ class AppRouter {
     '/annonces',
     '/search',
     '/magasins', // public
+    '/marches', // public
   ];
 
   static final GoRouter router = GoRouter(
@@ -73,6 +75,7 @@ class AppRouter {
             onGoToMagasins: () => context.go('/magasins'),
             onGoToMagasinsByMarche: (marche) =>
                 context.go('/magasins?marche=$marche'),
+            onGoToMarches: () => context.go('/marches'),
           ),
         ),
       ),
@@ -253,6 +256,13 @@ class AppRouter {
       // ══════════════════════════════════════════════════════════════════════
       // ── MAGASINS ──────────────────────────────────────────────────────────
       // ══════════════════════════════════════════════════════════════════════
+
+      // ── Liste marchés (public) ─────────────────────────────────────────────
+      GoRoute(
+        path: '/marches',
+        pageBuilder: (context, state) =>
+            _slideTransition(state, const ListMarcheScreen()),
+      ),
 
       // ── Liste magasins (public) ────────────────────────────────────────────
       GoRoute(

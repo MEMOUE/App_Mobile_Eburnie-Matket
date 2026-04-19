@@ -48,6 +48,7 @@ class AccueilScreen extends StatefulWidget {
   final Function(int magasinId)? onGoToMagasin;
   final VoidCallback? onGoToMagasins;
   final Function(String marcheValue)? onGoToMagasinsByMarche;
+  final VoidCallback? onGoToMarches;
 
   const AccueilScreen({
     super.key,
@@ -61,6 +62,7 @@ class AccueilScreen extends StatefulWidget {
     this.onGoToMagasin,
     this.onGoToMagasins,
     this.onGoToMagasinsByMarche,
+    this.onGoToMarches,
   });
 
   @override
@@ -523,7 +525,7 @@ class _AccueilScreenState extends State<AccueilScreen>
     return FadeTransition(
       opacity: _fadeAnim,
       child: Padding(
-        padding: const EdgeInsets.only(top: 24),
+        padding: const EdgeInsets.only(top: 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -532,7 +534,7 @@ class _AccueilScreenState extends State<AccueilScreen>
               subtitle: 'Sélection actualisée toutes les 10 secondes',
               onSeeAll: () => widget.onGoToCategory?.call(''),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 2),
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 600),
               switchInCurve: Curves.easeIn,
@@ -583,7 +585,7 @@ class _AccueilScreenState extends State<AccueilScreen>
     return FadeTransition(
       opacity: _fadeAnim,
       child: Padding(
-        padding: const EdgeInsets.only(top: 24),
+        padding: const EdgeInsets.only(top: 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -591,7 +593,7 @@ class _AccueilScreenState extends State<AccueilScreen>
               title: 'Catégories Populaires',
               subtitle: 'Explorez par domaine',
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 2),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: GridView.builder(
@@ -699,7 +701,7 @@ class _AccueilScreenState extends State<AccueilScreen>
               ],
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 2),
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 600),
             transitionBuilder: (child, animation) =>
@@ -793,11 +795,11 @@ class _AccueilScreenState extends State<AccueilScreen>
                   ),
                 ),
                 GestureDetector(
-                  onTap: widget.onGoToMagasins,
+                  onTap: widget.onGoToMarches ?? widget.onGoToMagasins,
                   child: const Row(
                     children: [
                       Text(
-                        'Voir les magasins',
+                        'Tous les marchés',
                         style: TextStyle(
                           fontSize: 12,
                           color: Color(0xFF22C55E),
@@ -1596,7 +1598,11 @@ class _SectionHeader extends StatelessWidget {
               ),
               Text(
                 subtitle,
-                style: const TextStyle(fontSize: 12, color: AppTheme.gray500),
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: AppTheme.gray500,
+                  height: 1.1,
+                ),
               ),
             ],
           ),
