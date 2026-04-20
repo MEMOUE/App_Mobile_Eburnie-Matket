@@ -61,5 +61,10 @@
             </array>
         </dict>
     </array>
+
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Éburnie-Market utilise votre position pour localiser votre magasin sur la carte.</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>Éburnie-Market utilise votre position pour localiser votre magasin sur la carte.</string>
 </dict>
 </plist>

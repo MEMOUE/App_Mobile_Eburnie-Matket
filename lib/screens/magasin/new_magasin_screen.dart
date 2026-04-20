@@ -1,5 +1,6 @@
 // lib/screens/magasin/new_magasin_screen.dart
 
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,11 +14,8 @@ import '../../services/annonce_service.dart';
 
 class NewMagasinScreen extends StatefulWidget {
   final int? magasinId;
-
   const NewMagasinScreen({super.key, this.magasinId});
-
   bool get isEditing => magasinId != null;
-
   @override
   State<NewMagasinScreen> createState() => _NewMagasinScreenState();
 }
@@ -26,7 +24,6 @@ class _NewMagasinScreenState extends State<NewMagasinScreen> {
   final _formKey = GlobalKey<FormState>();
   final _service = MagasinService();
 
-  // Contrôleurs
   final _nomCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _adresseCtrl = TextEditingController();
@@ -37,23 +34,19 @@ class _NewMagasinScreenState extends State<NewMagasinScreen> {
   final _emailCtrl = TextEditingController();
   final _standCtrl = TextEditingController();
 
-  // Dropdowns
   String? _selectedCategorie;
   String? _selectedVille;
   String? _selectedMarche;
   bool _isActive = true;
 
-  // Logo
   File? _newLogo;
   String? _existingLogoUrl;
 
-  // Référentiels
   List<Map<String, dynamic>> _categories = [];
   List<Map<String, dynamic>> _cities = [];
   List<Marche> _marches = [];
   List<Marche> _filteredMarches = [];
 
-  // État
   bool _loadingData = true;
   bool _submitting = false;
   bool _locating = false;
@@ -79,6 +72,8 @@ class _NewMagasinScreenState extends State<NewMagasinScreen> {
     super.dispose();
   }
 
+  // ─── Chargement ────────────────────────────────────────────────────────────
+
   Future<void> _loadFormData() async {
     setState(() => _loadingData = true);
     try {
@@ -90,7 +85,6 @@ class _NewMagasinScreenState extends State<NewMagasinScreen> {
       _categories = results[0] as List<Map<String, dynamic>>;
       _cities = results[1] as List<Map<String, dynamic>>;
       _marches = results[2] as List<Marche>;
-
       if (widget.isEditing) {
         final m = await _service.getMagasin(widget.magasinId!);
         _prefillForm(m);
@@ -130,6 +124,8 @@ class _NewMagasinScreenState extends State<NewMagasinScreen> {
     });
   }
 
+  // ─── Logo ──────────────────────────────────────────────────────────────────
+
   Future<void> _pickLogo(ImageSource source) async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(
@@ -145,10 +141,13 @@ class _NewMagasinScreenState extends State<NewMagasinScreen> {
     }
   }
 
+  // ─── GPS — corrigé pour geolocator 9+ ─────────────────────────────────────
+
   Future<void> _useGPS() async {
     setState(() => _locating = true);
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      // 1. Service activé ?
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         _showSnack(
           'Activez la géolocalisation sur votre appareil',
@@ -156,6 +155,8 @@ class _NewMagasinScreenState extends State<NewMagasinScreen> {
         );
         return;
       }
+
+      // 2. Permission
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -164,12 +165,33 @@ class _NewMagasinScreenState extends State<NewMagasinScreen> {
           return;
         }
       }
+      if (permission == LocationPermission.deniedForever) {
+        _showSnack(
+          'Permission refusée définitivement. Activez-la dans les paramètres de l\'application.',
+          isError: true,
+        );
+        await Geolocator.openAppSettings();
+        return;
+      }
+
+      // 3. Récupération — API geolocator 9+ (locationSettings)
       final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 15),
+        ),
       );
-      _latCtrl.text = pos.latitude.toStringAsFixed(6);
-      _lngCtrl.text = pos.longitude.toStringAsFixed(6);
+
+      setState(() {
+        _latCtrl.text = pos.latitude.toStringAsFixed(6);
+        _lngCtrl.text = pos.longitude.toStringAsFixed(6);
+      });
       _showSnack('Position GPS récupérée ✅');
+    } on TimeoutException {
+      _showSnack(
+        'Délai dépassé. Réessayez en extérieur ou vérifiez le GPS.',
+        isError: true,
+      );
     } catch (e) {
       _showSnack('Impossible d\'obtenir la position GPS', isError: true);
     } finally {
@@ -177,10 +199,11 @@ class _NewMagasinScreenState extends State<NewMagasinScreen> {
     }
   }
 
+  // ─── Soumission ────────────────────────────────────────────────────────────
+
   Future<void> _submit() async {
     setState(() => _globalError = null);
     if (!_formKey.currentState!.validate()) return;
-
     setState(() => _submitting = true);
     try {
       final lat = _latCtrl.text.isNotEmpty
@@ -249,6 +272,8 @@ class _NewMagasinScreenState extends State<NewMagasinScreen> {
     );
   }
 
+  // ─── Build ─────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -302,7 +327,7 @@ class _NewMagasinScreenState extends State<NewMagasinScreen> {
       child: Row(
         children: [
           GestureDetector(
-            onTap: () => _showLogoOptions(),
+            onTap: _showLogoOptions,
             child: Container(
               width: 88,
               height: 88,
@@ -335,7 +360,7 @@ class _NewMagasinScreenState extends State<NewMagasinScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 ElevatedButton.icon(
-                  onPressed: () => _showLogoOptions(),
+                  onPressed: _showLogoOptions,
                   icon: const Icon(Icons.upload, size: 16),
                   label: const Text('Choisir un logo'),
                   style: ElevatedButton.styleFrom(
@@ -555,6 +580,7 @@ class _NewMagasinScreenState extends State<NewMagasinScreen> {
             ),
           ),
           const SizedBox(height: 16),
+          // ── GPS ──
           Row(
             children: [
               const Expanded(
@@ -569,13 +595,14 @@ class _NewMagasinScreenState extends State<NewMagasinScreen> {
               ),
               GestureDetector(
                 onTap: _locating ? null : _useGPS,
-                child: Container(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 7,
                   ),
                   decoration: BoxDecoration(
-                    color: AppTheme.infoBlue,
+                    color: _locating ? AppTheme.gray400 : AppTheme.infoBlue,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: _locating
@@ -848,19 +875,16 @@ class _NewMagasinScreenState extends State<NewMagasinScreen> {
 
   Widget _logoPlaceholder() => Container(
     color: AppTheme.primaryOrangeLight,
-    child: Column(
+    child: const Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const Icon(
+        Icon(
           Icons.storefront_outlined,
           color: AppTheme.primaryOrange,
           size: 28,
         ),
-        const SizedBox(height: 4),
-        const Text(
-          'Logo',
-          style: TextStyle(color: AppTheme.gray400, fontSize: 10),
-        ),
+        SizedBox(height: 4),
+        Text('Logo', style: TextStyle(color: AppTheme.gray400, fontSize: 10)),
       ],
     ),
   );
