@@ -31,9 +31,9 @@ class MagasinService {
 
   Future<List<Marche>> getMarches({String? ville}) async {
     try {
-      final uri = Uri.parse(
-        '${_baseUrl}marches/',
-      ).replace(queryParameters: ville != null ? {'ville': ville} : null);
+      final uri = Uri.parse('${_baseUrl}marches/').replace(
+        queryParameters: ville != null ? {'ville': ville} : null,
+      );
       final response = await http
           .get(uri, headers: _headers)
           .timeout(AppConfig.connectTimeout);
@@ -46,13 +46,7 @@ class MagasinService {
     return [];
   }
 
-  // ─── Marchés groupés par ville ────────────────────────────────────────────
-  //
-  // Essaie d'abord l'endpoint /marches/grouped/ du backend.
-  // En cas d'échec, reconstruit le groupement côté client à partir de getMarches().
-
   Future<List<MarcheGroup>> getMarchesGrouped() async {
-    // Tentative via endpoint dédié
     try {
       final response = await http
           .get(Uri.parse('${_baseUrl}marches/grouped/'), headers: _headers)
@@ -66,10 +60,9 @@ class MagasinService {
       }
     } catch (_) {}
 
-    // Fallback : groupement client-side
+    // Fallback groupement client
     final marches = await getMarches();
     if (marches.isEmpty) return [];
-
     final Map<String, MarcheGroup> grouped = {};
     for (final m in marches) {
       if (!grouped.containsKey(m.villeCode)) {
@@ -81,8 +74,6 @@ class MagasinService {
       }
       grouped[m.villeCode]!.marches.add(m);
     }
-
-    // Garder seulement les villes avec ≥ 2 marchés (comme Angular)
     return grouped.values.where((g) => g.marches.length >= 2).toList();
   }
 
@@ -156,8 +147,6 @@ class MagasinService {
     throw _parseError(response);
   }
 
-  // ─── Sélecteur léger ─────────────────────────────────────────────────────
-
   Future<List<MagasinSelector>> getMyMagasinsSelector() async {
     try {
       final response = await http
@@ -195,22 +184,9 @@ class MagasinService {
       Uri.parse('${_baseUrl}create/'),
     );
     request.headers.addAll(_authHeaders);
-    _fillFields(
-      request,
-      nom,
-      description,
-      categorie,
-      ville,
-      marche,
-      numeroStand,
-      adresse,
-      latitude,
-      longitude,
-      telephone,
-      whatsapp,
-      emailContact,
-      isActive,
-    );
+    _fillFields(request, nom, description, categorie, ville, marche,
+        numeroStand, adresse, latitude, longitude, telephone, whatsapp,
+        emailContact, isActive);
     if (logo != null) {
       request.files.add(await http.MultipartFile.fromPath('logo', logo.path));
     }
@@ -241,22 +217,9 @@ class MagasinService {
       Uri.parse('$_baseUrl$id/update/'),
     );
     request.headers.addAll(_authHeaders);
-    _fillFields(
-      request,
-      nom,
-      description,
-      categorie,
-      ville,
-      marche,
-      numeroStand,
-      adresse,
-      latitude,
-      longitude,
-      telephone,
-      whatsapp,
-      emailContact,
-      isActive,
-    );
+    _fillFields(request, nom, description, categorie, ville, marche,
+        numeroStand, adresse, latitude, longitude, telephone, whatsapp,
+        emailContact, isActive);
     if (logo != null) {
       request.files.add(await http.MultipartFile.fromPath('logo', logo.path));
     }
@@ -272,6 +235,38 @@ class MagasinService {
     if (response.statusCode != 204 && response.statusCode != 200) {
       throw _parseError(response);
     }
+  }
+
+  // ─── QR Code ──────────────────────────────────────────────────────────────
+
+  /// Régénère le QR code côté backend (propriétaire uniquement).
+  /// Retourne la nouvelle URL absolue du QR code, ou null en cas d'erreur.
+  Future<String?> regenerateQr(int id) async {
+    final response = await http
+        .post(
+          Uri.parse('$_baseUrl$id/qr/regenerate/'),
+          headers: _headers,
+          body: '{}',
+        )
+        .timeout(AppConfig.connectTimeout);
+    if (response.statusCode == 200) {
+      final data = json.decode(utf8.decode(response.bodyBytes));
+      return data['qr_code_url'] as String?;
+    }
+    throw _parseError(response);
+  }
+
+  /// Télécharge les bytes bruts du QR code PNG depuis le backend.
+  /// Utilisé pour partager ou sauvegarder l'image localement.
+  Future<List<int>> downloadQrBytes(int id) async {
+    final response = await http
+        .get(
+          Uri.parse('$_baseUrl$id/qr/download/'),
+          headers: _authHeaders,
+        )
+        .timeout(AppConfig.connectTimeout);
+    if (response.statusCode == 200) return response.bodyBytes;
+    throw _parseError(response);
   }
 
   // ─── Helpers privés ───────────────────────────────────────────────────────
@@ -340,18 +335,12 @@ class MagasinService {
       }
     } catch (_) {}
     switch (response.statusCode) {
-      case 400:
-        return Exception('Données invalides.');
-      case 401:
-        return Exception('Session expirée. Reconnectez-vous.');
-      case 403:
-        return Exception('Accès non autorisé.');
-      case 404:
-        return Exception('Magasin introuvable.');
-      case 500:
-        return Exception('Erreur serveur. Réessayez plus tard.');
-      default:
-        return Exception('Erreur réseau (${response.statusCode}).');
+      case 400:  return Exception('Données invalides.');
+      case 401:  return Exception('Session expirée. Reconnectez-vous.');
+      case 403:  return Exception('Accès non autorisé.');
+      case 404:  return Exception('Magasin introuvable.');
+      case 500:  return Exception('Erreur serveur. Réessayez plus tard.');
+      default:   return Exception('Erreur réseau (${response.statusCode}).');
     }
   }
 }

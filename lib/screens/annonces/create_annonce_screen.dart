@@ -7,7 +7,9 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../config/app_theme.dart';
 import '../../models/annonce.dart';
+import '../../models/magasin.dart';
 import '../../services/annonce_service.dart';
+import '../../services/magasin_service.dart';
 
 class CreateAnnonceScreen extends StatefulWidget {
   /// null → création, non-null → édition
@@ -24,6 +26,7 @@ class CreateAnnonceScreen extends StatefulWidget {
 class _CreateAnnonceScreenState extends State<CreateAnnonceScreen> {
   final _formKey = GlobalKey<FormState>();
   final _service = AnnonceService();
+  final _magasinService = MagasinService(); // ← NOUVEAU
 
   // Contrôleurs texte
   final _titleCtrl = TextEditingController();
@@ -49,6 +52,11 @@ class _CreateAnnonceScreenState extends State<CreateAnnonceScreen> {
   List<AdImage> _existingImages = [];
   final List<String> _removedImageIds = [];
   int _primaryIndex = 0;
+
+  // ─── Magasin ──────────────────────────────────────────────────────────────
+  int? _selectedMagasinId; // null = aucun magasin sélectionné
+  int? _initialMagasinId; // valeur au chargement (pour détecter le détachement)
+  List<MagasinSelector> _myMagasins = [];
 
   // Listes options
   List<Map<String, dynamic>> _categories = [];
@@ -84,12 +92,16 @@ class _CreateAnnonceScreenState extends State<CreateAnnonceScreen> {
   Future<void> _loadFormData() async {
     setState(() => _loadingData = true);
     try {
+      // Catégories + villes (même type → Future.wait sans risque)
       final results = await Future.wait([
         _service.getCategories(),
         _service.getCities(),
       ]);
       _categories = results[0];
       _cities = results[1];
+
+      // Magasins séparément (type différent → évite le cast error Dart)
+      _myMagasins = await _magasinService.getMyMagasinsSelector();
 
       if (widget.isEditing) {
         final ad = await _service.getAdDetail(widget.adId!);
@@ -118,6 +130,8 @@ class _CreateAnnonceScreenState extends State<CreateAnnonceScreen> {
     _isNegotiable = ad.isNegotiable;
     _isUrgent = ad.isUrgent;
     _existingImages = List.from(ad.images);
+    _selectedMagasinId = ad.magasinId; // ← NOUVEAU
+    _initialMagasinId = ad.magasinId; // ← NOUVEAU
     if (ad.expiresAt != null) {
       try {
         _expiresAt = DateTime.parse(ad.expiresAt!);
@@ -177,10 +191,15 @@ class _CreateAnnonceScreenState extends State<CreateAnnonceScreen> {
       final expiresAtStr = _expiresAt != null
           ? '${_expiresAt!.toIso8601String().substring(0, 10)}T00:00:00Z'
           : null;
-      // Index principal parmi les nouvelles images uniquement
       final newPrimaryIdx = _primaryIndex >= _existingImages.length
           ? _primaryIndex - _existingImages.length
           : null;
+
+      // Faut-il détacher le magasin ? (avait un magasin → on l'a retiré)
+      final shouldClear =
+          widget.isEditing &&
+          _initialMagasinId != null &&
+          _selectedMagasinId == null;
 
       if (widget.isEditing) {
         await _service.updateAd(
@@ -199,6 +218,8 @@ class _CreateAnnonceScreenState extends State<CreateAnnonceScreen> {
           newImages: _newImages,
           keepImageIds: _existingImages.map((e) => e.id).toList(),
           primaryImageIndex: newPrimaryIdx,
+          magasinId: _selectedMagasinId, // ← NOUVEAU
+          clearMagasin: shouldClear, // ← NOUVEAU
         );
         _showSnack('Annonce mise à jour !');
       } else {
@@ -216,6 +237,7 @@ class _CreateAnnonceScreenState extends State<CreateAnnonceScreen> {
           expiresAt: expiresAtStr,
           images: _newImages,
           primaryImageIndex: _newImages.isNotEmpty ? 0 : null,
+          magasinId: _selectedMagasinId, // ← NOUVEAU
         );
         _showSnack('Annonce publiée avec succès ! 🎉');
       }
@@ -291,6 +313,8 @@ class _CreateAnnonceScreenState extends State<CreateAnnonceScreen> {
                   _buildInfoSection(),
                   const SizedBox(height: 16),
                   _buildDetailsSection(),
+                  const SizedBox(height: 16),
+                  _buildMagasinSection(), // ← NOUVEAU
                   const SizedBox(height: 16),
                   _buildContactSection(),
                   const SizedBox(height: 80),
@@ -458,7 +482,6 @@ class _CreateAnnonceScreenState extends State<CreateAnnonceScreen> {
           TextFormField(
             controller: _descCtrl,
             maxLines: 5,
-            // pas de validator → champ optionnel
             decoration: const InputDecoration(
               hintText: 'État, caractéristiques, inclus... (optionnel)',
               prefixIcon: Padding(
@@ -599,7 +622,9 @@ class _CreateAnnonceScreenState extends State<CreateAnnonceScreen> {
                   Expanded(
                     child: Text(
                       _expiresAt != null
-                          ? '${_expiresAt!.day.toString().padLeft(2, '0')}/${_expiresAt!.month.toString().padLeft(2, '0')}/${_expiresAt!.year}'
+                          ? '${_expiresAt!.day.toString().padLeft(2, '0')}/'
+                                '${_expiresAt!.month.toString().padLeft(2, '0')}/'
+                                '${_expiresAt!.year}'
                           : 'Sélectionner une date',
                       style: TextStyle(
                         color: _expiresAt != null
@@ -624,6 +649,234 @@ class _CreateAnnonceScreenState extends State<CreateAnnonceScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  // ─── Section magasin (NOUVEAU) ────────────────────────────────────────────
+
+  Widget _buildMagasinSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFFCC80), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // En-tête
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryOrange.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.storefront_outlined,
+                  color: AppTheme.primaryOrange,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Rattacher à un magasin',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: AppTheme.gray900,
+                      ),
+                    ),
+                    Text(
+                      'Optionnel',
+                      style: TextStyle(fontSize: 11, color: AppTheme.gray500),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Corps
+          if (_myMagasins.isEmpty)
+            _buildNoMagasin()
+          else
+            _buildMagasinDropdown(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNoMagasin() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFFFCC80)),
+      ),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'Vous n\'avez pas encore de magasin.',
+              style: TextStyle(fontSize: 13, color: AppTheme.gray500),
+            ),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: () => context.push('/create-magasin'),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryOrange,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.add, color: Colors.white, size: 14),
+                  SizedBox(width: 4),
+                  Text(
+                    'Créer',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMagasinDropdown() {
+    // S'assurer que la valeur sélectionnée existe dans la liste
+    final validId = _myMagasins.any((m) => m.id == _selectedMagasinId)
+        ? _selectedMagasinId
+        : null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        DropdownButtonFormField<int?>(
+          value: validId,
+          isExpanded: true,
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 13,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(
+                color: Color(0xFFFFCC80),
+                width: 1.5,
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(
+                color: Color(0xFFFFCC80),
+                width: 1.5,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: AppTheme.primaryOrange, width: 2),
+            ),
+          ),
+          hint: const Text(
+            '-- Aucun magasin --',
+            style: TextStyle(color: AppTheme.gray400, fontSize: 14),
+          ),
+          onChanged: (v) => setState(() => _selectedMagasinId = v),
+          items: [
+            const DropdownMenuItem<int?>(
+              value: null,
+              child: Text(
+                '-- Aucun magasin --',
+                style: TextStyle(color: AppTheme.gray500, fontSize: 14),
+              ),
+            ),
+            ..._myMagasins.map(
+              (m) => DropdownMenuItem<int?>(
+                value: m.id,
+                child: Row(
+                  children: [
+                    Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryOrange.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Center(
+                        child: Text(
+                          m.nom.isNotEmpty ? m.nom[0].toUpperCase() : '?',
+                          style: const TextStyle(
+                            color: AppTheme.primaryOrange,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '${m.nom}'
+                        '${(m.marche != null && m.marche!.isNotEmpty) ? ' — ${m.marche}' : ''}'
+                        ' (${m.ville})',
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: AppTheme.gray900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (_selectedMagasinId != null) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: const [
+              Icon(Icons.info_outline, size: 13, color: AppTheme.gray400),
+              SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  'Les acheteurs retrouveront cette annonce sur la page du magasin.',
+                  style: TextStyle(fontSize: 11, color: AppTheme.gray500),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 

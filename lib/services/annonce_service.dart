@@ -14,7 +14,6 @@ class AnnonceService {
 
   String get _baseUrl => '${AppConfig.apiUrl}produit/';
 
-  /// Headers JSON + token si connecté
   Map<String, String> get _headers => {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
@@ -22,7 +21,6 @@ class AnnonceService {
       'Authorization': 'Token ${AuthService().token}',
   };
 
-  /// Headers sans Content-Type pour les requêtes multipart
   Map<String, String> get _authHeaders => {
     'Accept': 'application/json',
     if (AuthService().token != null)
@@ -139,6 +137,7 @@ class AnnonceService {
     String? expiresAt,
     List<File> images = const [],
     int? primaryImageIndex,
+    int? magasinId, // ← NOUVEAU
   }) async {
     final request = http.MultipartRequest(
       'POST',
@@ -162,6 +161,10 @@ class AnnonceService {
     }
     if (expiresAt != null && expiresAt.isNotEmpty) {
       request.fields['expires_at'] = expiresAt;
+    }
+    // ← NOUVEAU
+    if (magasinId != null) {
+      request.fields['magasin'] = magasinId.toString();
     }
     for (final img in images) {
       request.files.add(await http.MultipartFile.fromPath('images', img.path));
@@ -197,6 +200,8 @@ class AnnonceService {
     List<File> newImages = const [],
     List<String> keepImageIds = const [],
     int? primaryImageIndex,
+    int? magasinId, // ← NOUVEAU : id à rattacher
+    bool clearMagasin = false, // ← NOUVEAU : true = détacher
   }) async {
     final request = http.MultipartRequest(
       'PUT',
@@ -223,6 +228,12 @@ class AnnonceService {
     }
     if (keepImageIds.isNotEmpty) {
       request.fields['keep_image_ids'] = keepImageIds.join(',');
+    }
+    // ← NOUVEAU
+    if (magasinId != null) {
+      request.fields['magasin'] = magasinId.toString();
+    } else if (clearMagasin) {
+      request.fields['magasin'] = ''; // chaîne vide = détacher côté Django
     }
     for (final img in newImages) {
       request.files.add(await http.MultipartFile.fromPath('images', img.path));
@@ -280,13 +291,11 @@ class AnnonceService {
     } catch (_) {}
     return const [
       {'value': 'vehicules', 'label': 'Véhicules'},
-      // {'value': 'emploi_stages', 'label': 'Emploi & Stages'},
       {'value': 'immobilier', 'label': 'Immobilier'},
       {'value': 'electronique', 'label': 'Électronique'},
       {'value': 'maison_jardin', 'label': 'Maison & Jardin'},
       {'value': 'mode_beaute', 'label': 'Mode & Beauté'},
       {'value': 'sport_loisirs', 'label': 'Sport & Loisirs'},
-      // {'value': 'services', 'label': 'Services'},
       {'value': 'agroalimentaire', 'label': 'Agroalimentaire'},
       {'value': 'animaux', 'label': 'Animaux'},
       {'value': 'autres', 'label': 'Autres'},

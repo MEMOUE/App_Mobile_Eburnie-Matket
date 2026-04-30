@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../config/app_theme.dart';
 import '../../models/magasin.dart';
 import '../../services/magasin_service.dart';
@@ -25,10 +26,7 @@ class _MyMagasinScreenState extends State<MyMagasinScreen> {
   }
 
   Future<void> _loadMagasins() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    setState(() { _loading = true; _error = null; });
     try {
       final list = await MagasinService().getMyMagasins();
       if (mounted) setState(() => _magasins = list);
@@ -45,10 +43,8 @@ class _MyMagasinScreenState extends State<MyMagasinScreen> {
       context: context,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Supprimer le magasin',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
+        title: const Text('Supprimer le magasin',
+            style: TextStyle(fontWeight: FontWeight.w800)),
         content: Text(
           'Êtes-vous sûr de vouloir supprimer "${m.nom}" ? Cette action est irréversible.',
           style: const TextStyle(color: AppTheme.gray600),
@@ -56,23 +52,18 @@ class _MyMagasinScreenState extends State<MyMagasinScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text(
-              'Annuler',
-              style: TextStyle(color: AppTheme.gray600),
-            ),
+            child: const Text('Annuler',
+                style: TextStyle(color: AppTheme.gray600)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.errorRed,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
+                  borderRadius: BorderRadius.circular(8)),
             ),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              'Supprimer',
-              style: TextStyle(color: Colors.white),
-            ),
+            child: const Text('Supprimer',
+                style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -82,33 +73,55 @@ class _MyMagasinScreenState extends State<MyMagasinScreen> {
     try {
       await MagasinService().deleteMagasin(m.id);
       setState(() => _magasins.removeWhere((x) => x.id == m.id));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Magasin supprimé'),
-            backgroundColor: AppTheme.successGreen,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
-      }
+      _showSnack('Magasin supprimé');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString().replaceFirst('Exception: ', '')),
-            backgroundColor: AppTheme.errorRed,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
-      }
+      _showSnack(e.toString().replaceFirst('Exception: ', ''), isError: true);
     }
   }
+
+  // ── QR Code ────────────────────────────────────────────────────────────────
+
+  void _showQrModal(Magasin m) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _MyMagasinQrModal(
+        magasin: m,
+        onRegenerate: (updated) {
+          // Met à jour la liste en remplaçant l'objet par la version avec le nouveau QR
+          setState(() {
+            final idx = _magasins.indexWhere((x) => x.id == updated.id);
+            if (idx != -1) _magasins[idx] = updated;
+          });
+        },
+        onDownload: () => _downloadQr(m),
+      ),
+    );
+  }
+
+  Future<void> _downloadQr(Magasin m) async {
+    final uri = Uri.parse(m.qrDownloadUrl);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      _showSnack('Impossible d\'ouvrir le lien', isError: true);
+    }
+  }
+
+  void _showSnack(String msg, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: isError ? AppTheme.errorRed : AppTheme.successGreen,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -124,8 +137,7 @@ class _MyMagasinScreenState extends State<MyMagasinScreen> {
       ),
       body: _loading
           ? const Center(
-              child: CircularProgressIndicator(color: AppTheme.primaryOrange),
-            )
+              child: CircularProgressIndicator(color: AppTheme.primaryOrange))
           : _error != null
           ? _buildError()
           : RefreshIndicator(
@@ -151,9 +163,10 @@ class _MyMagasinScreenState extends State<MyMagasinScreen> {
     separatorBuilder: (_, __) => const SizedBox(height: 12),
     itemBuilder: (_, i) => _MagasinCard(
       magasin: _magasins[i],
-      onView: () => context.push('/magasins/${_magasins[i].id}'),
-      onEdit: () => context.go('/edit-magasin/${_magasins[i].id}'),
+      onView:   () => context.push('/magasins/${_magasins[i].id}'),
+      onEdit:   () => context.go('/edit-magasin/${_magasins[i].id}'),
       onDelete: () => _confirmDelete(_magasins[i]),
+      onQr:     () => _showQrModal(_magasins[i]),
     ),
   );
 
@@ -170,21 +183,15 @@ class _MyMagasinScreenState extends State<MyMagasinScreen> {
               color: AppTheme.primaryOrange.withOpacity(0.1),
               shape: BoxShape.circle,
             ),
-            child: const Icon(
-              Icons.storefront_outlined,
-              size: 44,
-              color: AppTheme.primaryOrange,
-            ),
+            child: const Icon(Icons.storefront_outlined,
+                size: 44, color: AppTheme.primaryOrange),
           ),
           const SizedBox(height: 20),
-          const Text(
-            'Aucun magasin',
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.gray700,
-            ),
-          ),
+          const Text('Aucun magasin',
+              style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.gray700)),
           const SizedBox(height: 8),
           const Text(
             'Créez votre premier magasin pour regrouper vos annonces.',
@@ -195,7 +202,8 @@ class _MyMagasinScreenState extends State<MyMagasinScreen> {
           GestureDetector(
             onTap: () => context.go('/create-magasin'),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
               decoration: BoxDecoration(
                 gradient: AppTheme.primaryGradient,
                 borderRadius: BorderRadius.circular(12),
@@ -203,10 +211,9 @@ class _MyMagasinScreenState extends State<MyMagasinScreen> {
               child: const Text(
                 'Créer mon magasin',
                 style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
-                ),
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15),
               ),
             ),
           ),
@@ -221,13 +228,13 @@ class _MyMagasinScreenState extends State<MyMagasinScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.wifi_off_rounded, size: 56, color: AppTheme.gray400),
+          const Icon(Icons.wifi_off_rounded,
+              size: 56, color: AppTheme.gray400),
           const SizedBox(height: 16),
-          Text(
-            _error!,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: AppTheme.gray600, fontSize: 14),
-          ),
+          Text(_error!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  color: AppTheme.gray600, fontSize: 14)),
           const SizedBox(height: 20),
           ElevatedButton.icon(
             onPressed: _loadMagasins,
@@ -244,19 +251,23 @@ class _MyMagasinScreenState extends State<MyMagasinScreen> {
   );
 }
 
-// ─── Carte magasin ─────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// Carte magasin (avec bouton QR)
+// ══════════════════════════════════════════════════════════════════════════════
 
 class _MagasinCard extends StatelessWidget {
   final Magasin magasin;
   final VoidCallback onView;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback onQr;
 
   const _MagasinCard({
     required this.magasin,
     required this.onView,
     required this.onEdit,
     required this.onDelete,
+    required this.onQr,
   });
 
   @override
@@ -267,10 +278,9 @@ class _MagasinCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 3))
         ],
       ),
       child: Column(
@@ -294,21 +304,16 @@ class _MagasinCard extends StatelessWidget {
                     right: 8,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
+                          horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
                         color: Colors.black.withOpacity(0.5),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Text(
-                        'Inactif',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      child: const Text('Inactif',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold)),
                     ),
                   ),
                 if (magasin.isVerified)
@@ -317,9 +322,7 @@ class _MagasinCard extends StatelessWidget {
                     left: 8,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
+                          horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(8),
@@ -327,27 +330,37 @@ class _MagasinCard extends StatelessWidget {
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
-                            Icons.verified,
-                            size: 11,
-                            color: Color(0xFF22C55E),
-                          ),
+                          Icon(Icons.verified,
+                              size: 11, color: Color(0xFF22C55E)),
                           SizedBox(width: 4),
-                          Text(
-                            'Vérifié',
-                            style: TextStyle(
-                              color: Color(0xFF22C55E),
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                          Text('Vérifié',
+                              style: TextStyle(
+                                  color: Color(0xFF22C55E),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold)),
                         ],
                       ),
+                    ),
+                  ),
+                // Badge QR disponible
+                if (magasin.qrCodeUrl != null)
+                  Positioned(
+                    top: 8,
+                    right: magasin.isActive ? 8 : 60,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(Icons.qr_code_rounded,
+                          size: 14, color: AppTheme.primaryOrange),
                     ),
                   ),
               ],
             ),
           ),
+
           // Contenu
           Padding(
             padding: const EdgeInsets.all(14),
@@ -366,11 +379,10 @@ class _MagasinCard extends StatelessWidget {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(10),
                     child: magasin.logoAbsoluteUrl != null
-                        ? Image.network(
-                            magasin.logoAbsoluteUrl!,
+                        ? Image.network(magasin.logoAbsoluteUrl!,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => _logoPlaceholder(),
-                          )
+                            errorBuilder: (_, __, ___) =>
+                                _logoPlaceholder())
                         : _logoPlaceholder(),
                   ),
                 ),
@@ -380,54 +392,38 @@ class _MagasinCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        magasin.nom,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                          color: AppTheme.gray900,
-                        ),
-                      ),
+                      Text(magasin.nom,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                              color: AppTheme.gray900)),
                       const SizedBox(height: 2),
-                      Text(
-                        magasin.categorieDisplay,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppTheme.primaryOrange,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+                      Text(magasin.categorieDisplay,
+                          style: const TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.primaryOrange,
+                              fontWeight: FontWeight.w600)),
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          const Icon(
-                            Icons.location_on_outlined,
-                            size: 12,
-                            color: AppTheme.gray400,
-                          ),
+                          const Icon(Icons.location_on_outlined,
+                              size: 12, color: AppTheme.gray400),
                           const SizedBox(width: 2),
-                          Text(
-                            magasin.villeDisplay,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppTheme.gray500,
-                            ),
-                          ),
-                          if (magasin.marcheDisplay?.isNotEmpty ?? false) ...[
-                            const Text(
-                              ' · ',
-                              style: TextStyle(color: AppTheme.gray400),
-                            ),
-                            Expanded(
-                              child: Text(
-                                magasin.marcheDisplay!,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                          Text(magasin.villeDisplay,
+                              style: const TextStyle(
                                   fontSize: 12,
-                                  color: AppTheme.gray500,
-                                ),
-                              ),
+                                  color: AppTheme.gray500)),
+                          if (magasin.marcheDisplay?.isNotEmpty ?? false) ...[
+                            const Text(' · ',
+                                style:
+                                    TextStyle(color: AppTheme.gray400)),
+                            Expanded(
+                              child: Text(magasin.marcheDisplay!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      color: AppTheme.gray500)),
                             ),
                           ],
                         ],
@@ -435,19 +431,14 @@ class _MagasinCard extends StatelessWidget {
                       const SizedBox(height: 6),
                       Row(
                         children: [
-                          const Icon(
-                            Icons.shopping_bag_outlined,
-                            size: 12,
-                            color: AppTheme.gray400,
-                          ),
+                          const Icon(Icons.shopping_bag_outlined,
+                              size: 12, color: AppTheme.gray400),
                           const SizedBox(width: 2),
                           Text(
-                            '${magasin.nbAnnonces} annonce(s) active(s)',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppTheme.gray500,
-                            ),
-                          ),
+                              '${magasin.nbAnnonces} annonce(s) active(s)',
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppTheme.gray500)),
                         ],
                       ),
                     ],
@@ -456,6 +447,7 @@ class _MagasinCard extends StatelessWidget {
               ],
             ),
           ),
+
           // Actions
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
@@ -479,6 +471,15 @@ class _MagasinCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
+                // Bouton QR
+                _ActionBtn(
+                  icon: Icons.qr_code_rounded,
+                  label: '',
+                  color: const Color(0xFF8B5CF6),
+                  onTap: onQr,
+                  compact: true,
+                ),
+                const SizedBox(width: 8),
                 _ActionBtn(
                   icon: Icons.delete_outline,
                   label: '',
@@ -495,16 +496,269 @@ class _MagasinCard extends StatelessWidget {
   }
 
   Widget _logoPlaceholder() => Center(
-    child: Text(
-      magasin.initials,
-      style: const TextStyle(
-        color: AppTheme.primaryOrange,
-        fontWeight: FontWeight.w800,
-        fontSize: 18,
+    child: Text(magasin.initials,
+        style: const TextStyle(
+            color: AppTheme.primaryOrange,
+            fontWeight: FontWeight.w800,
+            fontSize: 18)),
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Modale QR (propriétaire)
+// ══════════════════════════════════════════════════════════════════════════════
+
+class _MyMagasinQrModal extends StatefulWidget {
+  final Magasin magasin;
+  final void Function(Magasin updated) onRegenerate;
+  final VoidCallback onDownload;
+
+  const _MyMagasinQrModal({
+    required this.magasin,
+    required this.onRegenerate,
+    required this.onDownload,
+  });
+
+  @override
+  State<_MyMagasinQrModal> createState() => _MyMagasinQrModalState();
+}
+
+class _MyMagasinQrModalState extends State<_MyMagasinQrModal> {
+  late Magasin _magasin;
+  bool _regenerating = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _magasin = widget.magasin;
+  }
+
+  Future<void> _regenerate() async {
+    setState(() { _regenerating = true; _error = null; });
+    try {
+      final newUrl = await MagasinService().regenerateQr(_magasin.id);
+      if (mounted && newUrl != null) {
+        final updated = _magasin.copyWith(
+          qrCodeUrl: '$newUrl?t=${DateTime.now().millisecondsSinceEpoch}',
+        );
+        setState(() => _magasin = updated);
+        widget.onRegenerate(updated);
+        _showSnack('QR code régénéré ✅');
+      }
+    } catch (e) {
+      setState(
+          () => _error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _regenerating = false);
+    }
+  }
+
+  void _showSnack(String msg, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: isError ? AppTheme.errorRed : AppTheme.successGreen,
+        behavior: SnackBarBehavior.floating,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+          24, 16, 24, MediaQuery.of(context).padding.bottom + 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Poignée
+          Container(
+            width: 40,
+            height: 4,
+            margin: const EdgeInsets.only(bottom: 20),
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+
+          // Header
+          Row(
+            children: [
+              if (_magasin.logoAbsoluteUrl != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(_magasin.logoAbsoluteUrl!,
+                      width: 40,
+                      height: 40,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _initials()),
+                )
+              else
+                _initials(),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_magasin.nom,
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w800)),
+                    Text(_magasin.villeDisplay,
+                        style: const TextStyle(
+                            fontSize: 12, color: AppTheme.gray500)),
+                  ],
+                ),
+              ),
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: const Icon(Icons.close, color: AppTheme.gray400),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 8),
+          const Text(
+            'Scannez ce code pour accéder directement au magasin',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, color: AppTheme.gray500),
+          ),
+          const SizedBox(height: 20),
+
+          // QR image
+          if (_magasin.qrCodeAbsoluteUrl != null)
+            Container(
+              width: 220,
+              height: 220,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                border: Border.all(color: AppTheme.gray200),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.06),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  )
+                ],
+                color: Colors.white,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.network(
+                  _magasin.qrCodeAbsoluteUrl!,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const Icon(
+                    Icons.qr_code_2,
+                    size: 80,
+                    color: AppTheme.gray400,
+                  ),
+                ),
+              ),
+            )
+          else
+            Container(
+              width: 220,
+              height: 220,
+              decoration: BoxDecoration(
+                color: AppTheme.gray100,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.qr_code_2, size: 56, color: AppTheme.gray400),
+                  SizedBox(height: 8),
+                  Text('QR code non disponible',
+                      style:
+                          TextStyle(color: AppTheme.gray500, fontSize: 13)),
+                ],
+              ),
+            ),
+
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            Text(_error!,
+                style: const TextStyle(
+                    color: AppTheme.errorRed, fontSize: 12)),
+          ],
+
+          const SizedBox(height: 24),
+
+          // Boutons
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _magasin.qrCodeAbsoluteUrl != null
+                      ? widget.onDownload
+                      : null,
+                  icon: const Icon(Icons.download_rounded, size: 18),
+                  label: const Text('Télécharger'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.successGreen,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton(
+                onPressed: _regenerating ? null : _regenerate,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.gray100,
+                  foregroundColor: AppTheme.gray700,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                child: _regenerating
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppTheme.primaryOrange),
+                      )
+                    : const Icon(Icons.refresh_rounded,
+                        size: 20, color: AppTheme.primaryOrange),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _initials() => Container(
+    width: 40,
+    height: 40,
+    decoration: BoxDecoration(
+      color: AppTheme.primaryOrangeLight,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Center(
+      child: Text(_magasin.initials,
+          style: const TextStyle(
+              color: AppTheme.primaryOrange,
+              fontWeight: FontWeight.w800,
+              fontSize: 14)),
     ),
   );
 }
+
+// ── Bouton d'action ────────────────────────────────────────────────────────────
 
 class _ActionBtn extends StatelessWidget {
   final IconData icon;
@@ -525,7 +779,8 @@ class _ActionBtn extends StatelessWidget {
   Widget build(BuildContext context) => GestureDetector(
     onTap: onTap,
     child: Container(
-      padding: EdgeInsets.symmetric(vertical: 8, horizontal: compact ? 10 : 0),
+      padding: EdgeInsets.symmetric(
+          vertical: 8, horizontal: compact ? 10 : 0),
       decoration: BoxDecoration(
         color: color.withOpacity(0.08),
         borderRadius: BorderRadius.circular(8),
@@ -537,14 +792,11 @@ class _ActionBtn extends StatelessWidget {
           Icon(icon, size: 14, color: color),
           if (label.isNotEmpty) ...[
             const SizedBox(width: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: color,
-              ),
-            ),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: color)),
           ],
         ],
       ),

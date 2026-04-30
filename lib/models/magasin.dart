@@ -40,6 +40,7 @@ class Magasin {
   final String nom;
   final String? description;
   final String? logoUrl;
+  final String? qrCodeUrl;        // ← nouveau
   final String categorie;
   final String categorieDisplay;
   final String ville;
@@ -66,6 +67,7 @@ class Magasin {
     required this.nom,
     this.description,
     this.logoUrl,
+    this.qrCodeUrl,               // ← nouveau
     required this.categorie,
     required this.categorieDisplay,
     required this.ville,
@@ -88,6 +90,8 @@ class Magasin {
     this.createdAt,
   });
 
+  // ── Helpers ─────────────────────────────────────────────────────────────
+
   String get initials {
     final words = nom.trim().split(' ');
     if (words.isEmpty) return '?';
@@ -101,6 +105,17 @@ class Magasin {
     return '${AppConfig.mediaUrl}$logoUrl';
   }
 
+  /// URL absolue du QR code (image PNG générée par le backend)
+  String? get qrCodeAbsoluteUrl {
+    if (qrCodeUrl == null || qrCodeUrl!.isEmpty) return null;
+    if (qrCodeUrl!.startsWith('http')) return qrCodeUrl;
+    return '${AppConfig.mediaUrl}$qrCodeUrl';
+  }
+
+  /// URL de téléchargement direct du QR code (endpoint Django)
+  String get qrDownloadUrl =>
+      '${AppConfig.apiUrl}magasins_marches/$id/qr/download/';
+
   bool get hasLocation =>
       villeDisplay.isNotEmpty ||
       (marcheDisplay?.isNotEmpty ?? false) ||
@@ -112,11 +127,41 @@ class Magasin {
       (whatsapp?.isNotEmpty ?? false) ||
       (emailContact?.isNotEmpty ?? false);
 
+  /// Crée une copie avec un nouveau qrCodeUrl (utile après régénération)
+  Magasin copyWith({String? qrCodeUrl}) => Magasin(
+    id: id,
+    nom: nom,
+    description: description,
+    logoUrl: logoUrl,
+    qrCodeUrl: qrCodeUrl ?? this.qrCodeUrl,
+    categorie: categorie,
+    categorieDisplay: categorieDisplay,
+    ville: ville,
+    villeDisplay: villeDisplay,
+    marche: marche,
+    marcheDisplay: marcheDisplay,
+    numeroStand: numeroStand,
+    adresse: adresse,
+    latitude: latitude,
+    longitude: longitude,
+    telephone: telephone,
+    whatsapp: whatsapp,
+    emailContact: emailContact,
+    isActive: isActive,
+    isVerified: isVerified,
+    nbAnnonces: nbAnnonces,
+    isOwner: isOwner,
+    owner: owner,
+    ownerName: ownerName,
+    createdAt: createdAt,
+  );
+
   factory Magasin.fromJson(Map<String, dynamic> json) => Magasin(
     id: json['id'] ?? 0,
     nom: json['nom'] ?? '',
     description: json['description'],
     logoUrl: json['logo_url'],
+    qrCodeUrl: json['qr_code_url'],   // ← nouveau
     categorie: json['categorie'] ?? '',
     categorieDisplay: json['categorie_display'] ?? json['categorie'] ?? '',
     ville: json['ville'] ?? '',
@@ -154,7 +199,7 @@ class Marche {
   final String value;
   final String label;
   final String villeCode;
-  final String villeLabel; // ← AJOUT : libellé de la ville parent
+  final String villeLabel;
 
   const Marche({
     required this.value,
@@ -172,8 +217,6 @@ class Marche {
 }
 
 // ─── Marchés groupés par ville ────────────────────────────────────────────
-//
-// Miroir de MarcheCity dans Angular.
 
 class MarcheGroup {
   final String ville;

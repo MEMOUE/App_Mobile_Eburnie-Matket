@@ -89,6 +89,7 @@ class Ad {
   final String? timeSincePublished;
   final String? whatsappNumber;
   final bool isOwner;
+  final int? magasinId; // ← NOUVEAU
 
   const Ad({
     required this.id,
@@ -117,6 +118,7 @@ class Ad {
     this.timeSincePublished,
     this.whatsappNumber,
     this.isOwner = false,
+    this.magasinId, // ← NOUVEAU
   });
 
   /// URL de l'image principale (absolue)
@@ -133,8 +135,6 @@ class Ad {
     return null;
   }
 
-  /// Prix formaté en FCFA
-  /// DRF renvoie un DecimalField en String → on parse proprement
   String get formattedPrice {
     final formatted = price
         .toStringAsFixed(0)
@@ -142,38 +142,28 @@ class Ad {
     return '$formatted FCFA';
   }
 
-  /// Numéro WhatsApp à contacter
   String? get contactWhatsApp {
     final n = whatsappNumber ?? user?.phoneNumber;
     if (n == null || n.isEmpty) return null;
     return n;
   }
 
-  /// Numéro de téléphone à appeler
   String? get contactPhone {
     final n = user?.phoneNumber ?? whatsappNumber;
     if (n == null || n.isEmpty) return null;
     return n;
   }
 
-  // ── Helpers privés ─────────────────────────────────────────────────────────
-
-  /// Parse le prix : DRF renvoie un String ("20000.00"), pas un num
   static double _parsePrice(dynamic raw) {
     if (raw == null) return 0.0;
     if (raw is num) return raw.toDouble();
     return double.tryParse(raw.toString()) ?? 0.0;
   }
 
-  /// Construit un AdUser depuis :
-  ///   • un objet imbriqué  { "user": { "id": ..., "full_name": ... } }  (détail)
-  ///   • des champs plats   { "user_name": "...", "user_avatar": "..." } (home-data / liste)
   static AdUser? _parseUser(Map<String, dynamic> json) {
-    // Objet imbriqué (endpoint détail)
     if (json['user'] != null && json['user'] is Map) {
       return AdUser.fromJson(Map<String, dynamic>.from(json['user']));
     }
-    // Champs plats (home-data, liste)
     final name = json['user_name'];
     if (name != null && (name as String).isNotEmpty) {
       return AdUser(
@@ -190,7 +180,7 @@ class Ad {
     id: json['id']?.toString() ?? '',
     title: json['title'] ?? '',
     description: json['description'],
-    price: _parsePrice(json['price']), // ← FIX : String → double
+    price: _parsePrice(json['price']),
     isNegotiable: json['is_negotiable'] ?? false,
     category: json['category'] ?? '',
     categoryDisplay: json['category_display'] ?? '',
@@ -209,7 +199,7 @@ class Ad {
             ?.map((e) => AdImage.fromJson(e))
             .toList() ??
         [],
-    user: _parseUser(json), // ← FIX : champs plats + objet
+    user: _parseUser(json),
     relatedAds:
         (json['related_ads'] as List<dynamic>?)
             ?.map((e) => Map<String, dynamic>.from(e))
@@ -221,6 +211,10 @@ class Ad {
     timeSincePublished: json['time_since_published'],
     whatsappNumber: json['whatsapp_number'],
     isOwner: json['is_owner'] ?? false,
+    // ← NOUVEAU : magasin_info.id (endpoint détail) ou magasin (endpoint liste)
+    magasinId: json['magasin_info'] is Map
+        ? (json['magasin_info'] as Map)['id'] as int?
+        : (json['magasin'] is int ? json['magasin'] as int? : null),
   );
 }
 
