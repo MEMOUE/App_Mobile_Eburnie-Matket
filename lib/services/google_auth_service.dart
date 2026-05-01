@@ -12,12 +12,16 @@ class GoogleAuthService {
   factory GoogleAuthService() => _instance;
   GoogleAuthService._internal();
 
-  // iOS  → clientId = iOS client ID (obligatoire pour éviter le crash)
-  // Android → clientId = null (lu depuis google-services.json)
-  //           serverClientId = Web client ID (nécessaire pour obtenir l'idToken)
+  // ─────────────────────────────────────────────────────────────────────────
+  // IMPORTANT :
+  //   • clientId       → iOS seulement (identifie l'app iOS auprès de Google)
+  //   • serverClientId → TOUJOURS le Web client ID (= GOOGLE_CLIENT_ID Django)
+  //                      Sans cela, le idToken est signé pour le mauvais
+  //                      "audience" et Django rejette la vérification.
+  // ─────────────────────────────────────────────────────────────────────────
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     clientId: Platform.isIOS ? AppConfig.googleClientIdIos : null,
-    serverClientId: Platform.isAndroid ? AppConfig.googleClientId : null,
+    serverClientId: AppConfig.googleClientId, // ← Web client ID, toujours
     scopes: ['email', 'profile'],
   );
 
@@ -33,7 +37,11 @@ class GoogleAuthService {
         throw Exception('Connexion Google annulée.');
       }
 
-      // 3. Récupération des jetons d'authentification
+      // 3. Vider le cache d'authentification pour forcer un token frais
+      //    (évite les idToken expirés mis en cache par le plugin)
+      await account.clearAuthCache();
+
+      // 4. Récupération des jetons d'authentification (token frais garanti)
       final GoogleSignInAuthentication auth = await account.authentication;
 
       final String? idToken = auth.idToken;
@@ -41,11 +49,12 @@ class GoogleAuthService {
       if (idToken == null || idToken.isEmpty) {
         throw Exception(
           'Impossible d\'obtenir le token Google (ID Token manquant).\n'
-          'Vérifiez que le serverClientId (Web) est bien configuré.',
+          'Vérifiez que serverClientId (Web client ID) est bien configuré '
+          'dans GoogleSignIn et dans Google Cloud Console.',
         );
       }
 
-      // 4. Envoi du token au backend Django
+      // 5. Envoi du idToken au backend Django pour vérification
       final response = await http
           .post(
             Uri.parse('${AppConfig.apiUrl}auth/google/'),
@@ -70,9 +79,10 @@ class GoogleAuthService {
       throw Exception(msg.toString());
     } on SocketException {
       throw Exception('Problème de connexion réseau.');
-    } catch (e) {
-      print('Erreur complète GoogleAuth: $e');
+    } on Exception {
       rethrow;
+    } catch (e) {
+      throw Exception('Erreur inattendue : $e');
     }
   }
 
